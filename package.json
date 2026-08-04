@@ -1,0 +1,20 @@
+{
+  "name": "digital-pass",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Self-deployed Apple & Google Wallet pass service — Cloudflare Worker + D1. Own your passes.",
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler dev --config worker/wrangler.toml",
+    "deploy": "wrangler deploy --config worker/wrangler.toml",
+    "test:sign": "node test/sign-test.mjs",
+    "assets:embed": "node scripts/embed-assets.mjs"
+  },
+  "dependencies": {
+    "fflate": "^0.8.2",
+    "node-forge": "^1.3.1"
+  },
+  "devDependencies": {
+    "wrangler": "^4.0.0"
+  }
+}

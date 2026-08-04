@@ -1,0 +1,557 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Pass Studio — Companion Builder Mockup</title>
+<style>
+  :root{
+    --bg:#f6f6f4; --panel:#ffffff; --ink:#1a1a1a; --ink-soft:#6b6b6b; --line:#e7e5e0;
+    --crimson:#a4133c; --crimson-deep:#800f2f; --rose:#ff4d6d; --blush:#fff0f3;
+    --accent:#a4133c; --chip:#f1efe9; --good:#1a7f4e;
+    --card-bg:linear-gradient(160deg,#800f2f 0%,#a4133c 55%,#c9184a 100%);
+  }
+  *{box-sizing:border-box; margin:0; padding:0;}
+  html,body{height:100%;}
+  body{
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Inter,Roboto,sans-serif;
+    background:var(--bg); color:var(--ink); overflow:hidden;
+  }
+  .app{display:flex; flex-direction:column; height:100vh;}
+
+  /* ── Top bar ─────────────────────────── */
+  .topbar{
+    display:flex; align-items:center; gap:16px; padding:10px 18px;
+    background:var(--panel); border-bottom:1px solid var(--line); flex-shrink:0;
+  }
+  .brandmark{display:flex; align-items:center; gap:9px; font-weight:700; font-size:15px;}
+  .brandmark .dot{width:26px;height:26px;border-radius:8px;background:var(--card-bg);display:grid;place-items:center;color:#fff;font-size:13px;}
+  .topbar .crumb{color:var(--ink-soft); font-size:13px;}
+  .seg{display:flex; background:var(--chip); border-radius:9px; padding:3px; margin-left:auto;}
+  .seg button{
+    border:0; background:transparent; padding:5px 14px; border-radius:7px; font-size:12.5px;
+    cursor:pointer; color:var(--ink-soft); font-weight:600; font-family:inherit;
+  }
+  .seg button.on{background:#fff; color:var(--ink); box-shadow:0 1px 3px rgba(0,0,0,.12);}
+  .publish{
+    border:0; background:var(--ink); color:#fff; font-weight:600; font-size:13px;
+    padding:8px 16px; border-radius:9px; cursor:pointer; font-family:inherit;
+  }
+
+  /* ── Main split: 2/3 viewer, 1/3 companion ── */
+  .main{display:flex; flex:1; min-height:0;}
+  .viewer{
+    flex:2; position:relative; display:flex; align-items:center; justify-content:center;
+    background:
+      radial-gradient(ellipse at 30% 20%, #efece6 0%, transparent 55%),
+      var(--bg);
+    overflow:auto; padding:34px;
+  }
+  .viewer-hint{
+    position:absolute; top:16px; left:50%; transform:translateX(-50%);
+    font-size:12px; color:var(--ink-soft); background:#fffdf8; border:1px solid var(--line);
+    padding:6px 14px; border-radius:99px; box-shadow:0 1px 4px rgba(0,0,0,.05); white-space:nowrap;
+  }
+  .viewer-hint b{color:var(--crimson);}
+
+  /* zoom / flip controls */
+  .viewer-tools{
+    position:absolute; bottom:18px; left:50%; transform:translateX(-50%);
+    display:flex; gap:8px;
+  }
+  .viewer-tools button{
+    border:1px solid var(--line); background:#fff; padding:7px 14px; border-radius:9px;
+    font-size:12.5px; cursor:pointer; font-family:inherit; color:var(--ink); font-weight:600;
+    box-shadow:0 1px 3px rgba(0,0,0,.06);
+  }
+  .viewer-tools button:hover{border-color:#cfcbc2;}
+
+  /* ── The pass ────────────────────────── */
+  .pass-wrap{perspective:1400px;}
+  .pass{
+    width:340px; border-radius:18px; position:relative;
+    transform-style:preserve-3d; transition:transform .7s cubic-bezier(.4,.1,.2,1);
+    box-shadow:0 24px 60px -18px rgba(128,15,47,.45), 0 4px 14px rgba(0,0,0,.12);
+  }
+  .pass.flipped{transform:rotateY(180deg);}
+  .face{
+    border-radius:18px; overflow:hidden; background:var(--card-bg); color:#fff;
+    backface-visibility:hidden; -webkit-backface-visibility:hidden;
+  }
+  .face.back{
+    position:absolute; inset:0; transform:rotateY(180deg);
+    background:linear-gradient(170deg,#5c0a22 0%,#800f2f 100%);
+    display:flex; flex-direction:column;
+  }
+
+  .clickable{position:relative; cursor:pointer; transition:box-shadow .15s;}
+  .clickable:hover{box-shadow:inset 0 0 0 2px rgba(255,255,255,.55); border-radius:6px;}
+  .clickable.selected{box-shadow:inset 0 0 0 2px #ffd166; border-radius:6px;}
+  .clickable::after{
+    content:attr(data-tip); position:absolute; top:-26px; left:0; font-size:10px; font-weight:700;
+    letter-spacing:.4px; background:#ffd166; color:#5c4400; padding:2px 8px; border-radius:6px;
+    opacity:0; transform:translateY(4px); transition:all .15s; pointer-events:none; white-space:nowrap; z-index:5;
+  }
+  .clickable:hover::after,.clickable.selected::after{opacity:1; transform:translateY(0);}
+
+  .pass-header{display:flex; align-items:center; justify-content:space-between; padding:13px 15px 10px;}
+  .pass-logo{display:flex; align-items:center; gap:8px;}
+  .pass-logo .heart{
+    width:28px;height:28px;border-radius:8px;background:rgba(255,255,255,.18);
+    display:grid;place-items:center;font-size:15px; backdrop-filter:blur(4px);
+  }
+  .pass-logo span{font-size:13px; font-weight:600; letter-spacing:.2px;}
+  .pass-headerfield{text-align:right;}
+  .pass-headerfield .lbl{font-size:8.5px; letter-spacing:1.1px; opacity:.75; font-weight:700;}
+  .pass-headerfield .val{font-size:13px; font-weight:700;}
+
+  .strip{
+    height:128px; position:relative; overflow:hidden;
+    background:
+      radial-gradient(circle at 68% 30%, rgba(255,255,255,.28) 0%, transparent 40%),
+      linear-gradient(120deg,#ff758f 0%,#ff4d6d 45%,#c9184a 100%);
+    display:flex; align-items:center; justify-content:center;
+  }
+  .strip .photo-ph{
+    display:flex; flex-direction:column; align-items:center; gap:5px; color:rgba(255,255,255,.95);
+  }
+  .strip .photo-ph .cam{font-size:30px; filter:drop-shadow(0 2px 6px rgba(0,0,0,.25));}
+  .strip .photo-ph .cap{font-size:10.5px; letter-spacing:.6px; font-weight:600; opacity:.9;}
+  .strip .grain{position:absolute; inset:0; opacity:.14;
+    background-image:radial-gradient(rgba(255,255,255,.7) .6px, transparent .6px); background-size:5px 5px;}
+
+  .pass-body{padding:12px 15px 14px;}
+  .primary .lbl{font-size:9px; letter-spacing:1.2px; opacity:.78; font-weight:700;}
+  .primary .val{font-size:17.5px; font-weight:700; line-height:1.25; margin-top:2px;}
+  .row2{display:flex; justify-content:space-between; margin-top:12px; gap:10px;}
+  .field .lbl{font-size:8.5px; letter-spacing:1.1px; opacity:.75; font-weight:700;}
+  .field .val{font-size:13.5px; font-weight:700; margin-top:1px;}
+  .field.right{text-align:right;}
+
+  .counter-band{
+    margin-top:13px; background:rgba(0,0,0,.22); border-radius:11px; padding:9px 12px;
+    display:flex; align-items:center; justify-content:space-between;
+  }
+  .counter-band .movement .lbl{font-size:8.5px; letter-spacing:1px; opacity:.8; font-weight:700;}
+  .counter-band .movement .val{font-size:12.5px; font-weight:700;}
+  .counter-band .acts{text-align:right;}
+  .counter-band .acts .num{font-size:19px; font-weight:800; line-height:1;}
+  .counter-band .acts .lbl{font-size:8.5px; letter-spacing:1px; opacity:.8; font-weight:700;}
+
+  .qr-zone{display:flex; justify-content:center; padding:4px 0 16px;}
+  .qr-card{background:#fff; border-radius:12px; padding:9px; display:flex; flex-direction:column; align-items:center; gap:5px;}
+  .qr{width:92px; height:92px; display:grid; grid-template-columns:repeat(13,1fr); grid-template-rows:repeat(13,1fr); gap:1px;}
+  .qr i{background:#111;}
+  .qr i.o{background:transparent;}
+  .qr-cap{font-size:8.5px; color:#777; letter-spacing:.4px; font-weight:600;}
+
+  /* back face */
+  .back-head{padding:16px 16px 8px; font-size:12px; font-weight:700; letter-spacing:1px; opacity:.85;}
+  .back-field{padding:11px 16px; border-top:1px solid rgba(255,255,255,.14);}
+  .back-field .lbl{font-size:9px; letter-spacing:1px; opacity:.7; font-weight:700;}
+  .back-field .val{font-size:13px; margin-top:3px; line-height:1.45;}
+  .back-field .val a{color:#ffb3c1; text-decoration:underline; cursor:pointer;}
+
+  /* ── Companion panel (1/3) ───────────── */
+  .companion{
+    flex:1; min-width:340px; max-width:460px; background:var(--panel);
+    border-right:1px solid var(--line); display:flex; flex-direction:column;
+    order:-1;
+  }
+  .comp-head{
+    padding:14px 18px; border-bottom:1px solid var(--line); display:flex; align-items:center; gap:11px; flex-shrink:0;
+  }
+  .comp-avatar{
+    width:34px;height:34px;border-radius:50%;
+    background:conic-gradient(from 210deg,#a4133c,#ff758f,#ffd166,#a4133c);
+    display:grid;place-items:center; color:#fff; font-size:15px;
+    box-shadow:0 2px 8px rgba(164,19,60,.35);
+  }
+  .comp-head .t{font-weight:700; font-size:14px;}
+  .comp-head .s{font-size:11.5px; color:var(--good); display:flex; align-items:center; gap:5px;}
+  .comp-head .s::before{content:""; width:7px;height:7px;border-radius:50%;background:var(--good);}
+
+  .comp-stream{flex:1; overflow-y:auto; padding:16px 16px 8px; display:flex; flex-direction:column; gap:12px;}
+  .msg{max-width:92%; font-size:13px; line-height:1.5; animation:pop .25s ease;}
+  @keyframes pop{from{opacity:0; transform:translateY(6px);} to{opacity:1; transform:none;}}
+  .msg.ai{align-self:flex-start; background:#faf8f3; border:1px solid var(--line); border-radius:4px 14px 14px 14px; padding:11px 13px;}
+  .msg.user{align-self:flex-end; background:var(--ink); color:#fff; border-radius:14px 4px 14px 14px; padding:10px 13px;}
+  .msg.ai b{color:var(--crimson);}
+  .msg .mini{margin-top:10px; display:flex; flex-direction:column; gap:8px;}
+  .mini input[type=text]{
+    border:1px solid var(--line); border-radius:8px; padding:8px 10px; font-size:13px; font-family:inherit; width:100%;
+  }
+  .mini .apply{
+    border:0; background:var(--crimson); color:#fff; padding:7px 12px; border-radius:8px;
+    font-size:12px; font-weight:700; cursor:pointer; font-family:inherit; align-self:flex-start;
+  }
+  .swatches{display:flex; gap:7px; margin-top:9px;}
+  .sw{width:30px;height:30px;border-radius:9px;cursor:pointer;border:2px solid transparent; transition:transform .12s;}
+  .sw:hover{transform:scale(1.12);}
+  .sw.on{border-color:var(--ink);}
+  .sw.crimson{background:linear-gradient(140deg,#800f2f,#c9184a);}
+  .sw.sunset{background:linear-gradient(140deg,#e85d04,#ffba08);}
+  .sw.ocean{background:linear-gradient(140deg,#023e8a,#00b4d8);}
+  .sw.forest{background:linear-gradient(140deg,#1b4332,#52b788);}
+  .sw.night{background:linear-gradient(140deg,#10002b,#5a189a);}
+
+  .chips{display:flex; flex-wrap:wrap; gap:7px; padding:10px 16px 6px; flex-shrink:0;}
+  .chip{
+    border:1px solid var(--line); background:#fff; border-radius:99px; padding:6px 12px;
+    font-size:12px; cursor:pointer; font-family:inherit; color:var(--ink); font-weight:600;
+    transition:all .13s;
+  }
+  .chip:hover{border-color:var(--crimson); color:var(--crimson); background:var(--blush);}
+
+  .comp-input{padding:10px 16px 14px; flex-shrink:0;}
+  .comp-input .box{
+    display:flex; gap:8px; border:1px solid var(--line); border-radius:12px; padding:8px 8px 8px 14px;
+    background:#fff; box-shadow:0 1px 4px rgba(0,0,0,.04);
+  }
+  .comp-input input{border:0; outline:0; flex:1; font-size:13px; font-family:inherit; background:transparent;}
+  .comp-input .send{
+    border:0; background:var(--crimson); color:#fff; width:32px; height:32px; border-radius:9px;
+    cursor:pointer; font-size:14px; display:grid; place-items:center;
+  }
+
+  /* code drawer */
+  .code-drawer{
+    position:absolute; inset:0; background:#151312; color:#e8e2d8; padding:26px 30px; overflow:auto;
+    font-family:"SF Mono",ui-monospace,Menlo,monospace; font-size:12px; line-height:1.6; display:none;
+  }
+  .code-drawer.show{display:block;}
+  .code-drawer .k{color:#ffb3c1;} .code-drawer .s{color:#ffd166;} .code-drawer .n{color:#8ecae6;}
+
+  .toast{
+    position:absolute; top:52px; left:50%; transform:translateX(-50%) translateY(-8px);
+    background:var(--ink); color:#fff; font-size:12.5px; padding:8px 16px; border-radius:99px;
+    opacity:0; transition:all .25s; pointer-events:none; white-space:nowrap; z-index:20;
+  }
+  .toast.show{opacity:1; transform:translateX(-50%) translateY(0);}
+</style>
+</head>
+<body>
+<div class="app">
+
+  <!-- Top bar -->
+  <div class="topbar">
+    <div class="brandmark"><div class="dot">♥</div> Pass Studio</div>
+    <div class="crumb">All About Love · Kindness Card · <span style="color:var(--good);font-weight:600;">Draft</span></div>
+    <div class="seg" id="platformSeg">
+      <button class="on" data-p="apple"> Apple</button>
+      <button data-p="google">G Google</button>
+    </div>
+    <div class="seg" id="viewSeg">
+      <button class="on" data-v="preview">Preview</button>
+      <button data-v="code">Code</button>
+    </div>
+    <button class="publish" onclick="toast('This would publish the template & mint a test pass link')">Publish template</button>
+  </div>
+
+  <div class="main">
+
+    <!-- ══ 2/3 OPTICAL VIEWER ══ -->
+    <div class="viewer" id="viewer">
+      <div class="viewer-hint">Click any part of the card — <b>everything is editable</b></div>
+      <div class="toast" id="toast"></div>
+
+      <div class="pass-wrap">
+        <div class="pass" id="pass">
+
+          <!-- FRONT -->
+          <div class="face front">
+            <div class="pass-header">
+              <div class="pass-logo clickable" data-tip="LOGO" data-el="logo">
+                <div class="heart">📷</div><span id="logoText">All About Love</span>
+              </div>
+              <div class="pass-headerfield clickable" data-tip="HEADER FIELD" data-el="due">
+                <div class="lbl">DUE</div><div class="val" id="dueVal">Aug 11</div>
+              </div>
+            </div>
+
+            <div class="strip clickable" data-tip="GUEST PHOTO" data-el="photo">
+              <div class="grain"></div>
+              <div class="photo-ph"><div class="cam">📸</div><div class="cap">SARAH'S EVENT PHOTO</div></div>
+            </div>
+
+            <div class="pass-body">
+              <div class="primary clickable" data-tip="PRIMARY FIELD" data-el="promise">
+                <div class="lbl">MY PROMISE</div>
+                <div class="val" id="promiseVal">I promised an act of kindness</div>
+              </div>
+
+              <div class="row2">
+                <div class="field clickable" data-tip="FIELD" data-el="name">
+                  <div class="lbl">GUEST</div><div class="val" id="nameVal">Sarah</div>
+                </div>
+                <div class="field right clickable" data-tip="FIELD" data-el="event">
+                  <div class="lbl">EVENT</div><div class="val">Rivera Wedding</div>
+                </div>
+              </div>
+
+              <div class="counter-band clickable" data-tip="LIVE COUNTERS · push-updated" data-el="counter">
+                <div class="movement">
+                  <div class="lbl">THE MOVEMENT</div>
+                  <div class="val" id="globalVal">Act #247,801 of one million</div>
+                </div>
+                <div class="acts">
+                  <div class="num" id="actsVal">0</div>
+                  <div class="lbl">ACTS DONE</div>
+                </div>
+              </div>
+            </div>
+
+            <div class="qr-zone clickable" data-tip="QR → PHOTO PAGE" data-el="qr">
+              <div class="qr-card">
+                <div class="qr" id="qrGrid"></div>
+                <div class="qr-cap">allaboutlove.camera/p/8f3a…</div>
+              </div>
+            </div>
+          </div>
+
+          <!-- BACK -->
+          <div class="face back">
+            <div class="back-head">BACK OF CARD</div>
+            <div class="back-field clickable" data-tip="BACK FIELD" data-el="backAlbum">
+              <div class="lbl">YOUR PHOTOS</div>
+              <div class="val"><a>View your event album →</a></div>
+            </div>
+            <div class="back-field clickable" data-tip="BACK FIELD" data-el="backAbout">
+              <div class="lbl">ABOUT</div>
+              <div class="val">One photo. One promise. One million acts of kindness. Complete yours by scanning the QR on the front.</div>
+            </div>
+            <div class="back-field clickable" data-tip="LOCATION RELEVANCE" data-el="location">
+              <div class="lbl">LOCK-SCREEN LOCATION</div>
+              <div class="val">📍 Rivera Wedding venue · card surfaces within ~100m</div>
+            </div>
+          </div>
+
+        </div>
+      </div>
+
+      <div class="viewer-tools">
+        <button onclick="flipPass()">↺ Flip card</button>
+        <button onclick="zoom(1)">＋</button>
+        <button onclick="zoom(-1)">－</button>
+      </div>
+
+      <!-- Code drawer -->
+      <div class="code-drawer" id="codeDrawer">
+<pre id="codeBody"></pre>
+      </div>
+    </div>
+
+    <!-- ══ 1/3 COMPANION ══ -->
+    <div class="companion">
+      <div class="comp-head">
+        <div class="comp-avatar">✦</div>
+        <div>
+          <div class="t">Companion</div>
+          <div class="s">Watching the canvas</div>
+        </div>
+      </div>
+
+      <div class="comp-stream" id="stream">
+        <div class="msg ai">Hi David — this is the <b>Kindness Card</b> for All About Love. I pulled the crimson palette from the brand and laid out the photo strip, promise, live counters, and the QR to the photo page. <br><br>Click anything on the card and I'll open its controls here. Or just tell me what to change.</div>
+      </div>
+
+      <div class="chips">
+        <button class="chip" onclick="chipPalette()">🎨 Try a palette</button>
+        <button class="chip" onclick="chipCelebrate()">🎉 Preview celebration state</button>
+        <button class="chip" onclick="chipReminder()">🔔 Preview reminder push</button>
+        <button class="chip" onclick="chipReset()">↩︎ Reset</button>
+      </div>
+
+      <div class="comp-input">
+        <div class="box">
+          <input id="chatInput" type="text" placeholder="e.g. “make the due date red” or “add my logo”" onkeydown="if(event.key==='Enter')sendChat()">
+          <button class="send" onclick="sendChat()">➤</button>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<script>
+/* ── fake QR ── */
+(function(){
+  const g=document.getElementById('qrGrid'); let seed=7;
+  for(let i=0;i<169;i++){
+    seed=(seed*137+61)%211;
+    const cell=document.createElement('i');
+    const r=Math.floor(i/13), c=i%13;
+    const finder=(r<4&&c<4)||(r<4&&c>8)||(r>8&&c<4);
+    if(finder){ const rr=r%13, cc=c%13;
+      const inR=r<4?r:r-9, inC=c<4?c:c-9;
+      cell.className=(inR===1&&inC===1)||(inR===2&&inC===2)?'':( (inR===1||inR===2)&&(inC===1||inC===2)?'o':'');
+      if(inR===0||inR===3||inC===0||inC===3) cell.className='';
+      else if(inR===1&&inC===1||inR===2&&inC===2||inR===1&&inC===2||inR===2&&inC===1) cell.className='o';
+    } else cell.className=seed%2?'':'o';
+    g.appendChild(cell);
+  }
+})();
+
+/* ── state ── */
+let zoomLevel=1, selected=null;
+const pass=document.getElementById('pass');
+const stream=document.getElementById('stream');
+
+function toast(t){const el=document.getElementById('toast'); el.textContent=t; el.classList.add('show'); setTimeout(()=>el.classList.remove('show'),2200);}
+function flipPass(){pass.classList.toggle('flipped');}
+function zoom(d){zoomLevel=Math.min(1.5,Math.max(.7,zoomLevel+d*.12)); pass.style.scale=zoomLevel;}
+
+function aiSay(html){
+  const m=document.createElement('div'); m.className='msg ai'; m.innerHTML=html;
+  stream.appendChild(m); stream.scrollTop=stream.scrollHeight; return m;
+}
+function userSay(t){
+  const m=document.createElement('div'); m.className='msg user'; m.textContent=t;
+  stream.appendChild(m); stream.scrollTop=stream.scrollHeight;
+}
+
+/* ── element click → contextual controls ── */
+const controls={
+  logo:{title:'Logo & brand name', body:()=>`Top-left logo area. In the real builder I'd accept a PNG or pull it from your site.
+    <div class="mini"><input type="text" id="ctl" value="All About Love">
+    <button class="apply" onclick="applyText('logoText')">Apply</button></div>`},
+  due:{title:'Due date (header field)', body:()=>`This is the header field — it stays visible in the wallet stack. Changing it later fires a <b>lock-screen notification</b>.
+    <div class="mini"><input type="text" id="ctl" value="Aug 11">
+    <button class="apply" onclick="applyText('dueVal')">Apply</button></div>`},
+  photo:{title:'Guest photo strip', body:()=>`The strip image is the guest's claimed event photo — fetched from your URL at creation and resized to Apple's specs. Every card gets its own.`},
+  promise:{title:'Primary field', body:()=>`The headline of the card.
+    <div class="mini"><input type="text" id="ctl" value="I promised an act of kindness">
+    <button class="apply" onclick="applyText('promiseVal')">Apply</button></div>`},
+  name:{title:'Guest name', body:()=>`Template token — filled per-pass from <b>{{name}}</b> in your API call.
+    <div class="mini"><input type="text" id="ctl" value="Sarah">
+    <button class="apply" onclick="applyText('nameVal')">Apply</button></div>`},
+  event:{title:'Event field', body:()=>`Filled from <b>{{event}}</b> per pass.`},
+  counter:{title:'Live counters', body:()=>`These update by push — a PATCH with new numbers refreshes every installed card in seconds. Try the <b>🎉 celebration</b> chip to see the completion update.`},
+  qr:{title:'QR code', body:()=>`Encodes the guest's photo page — <b>allaboutlove.camera/p/{{photoId}}</b>. Completing the act is one scan away.`},
+  backAlbum:{title:'Album link (back)', body:()=>`Back-of-card link that opens the guest's full album. On Apple, URLs in back fields are tappable; on Google this becomes a link button on the card.`},
+  backAbout:{title:'About text (back)', body:()=>`Free text on the back of the card.`},
+  location:{title:'Lock-screen location', body:()=>`Up to 10 geofences per pass. Within ~100m of the venue, the card surfaces on the lock screen — “Your kindness card is here.” <br><br><i>(In the real builder: a draggable map pin.)</i>`}
+};
+
+document.querySelectorAll('.clickable').forEach(el=>{
+  el.addEventListener('click',e=>{
+    e.stopPropagation();
+    document.querySelectorAll('.clickable').forEach(c=>c.classList.remove('selected'));
+    el.classList.add('selected'); selected=el.dataset.el;
+    const c=controls[selected];
+    if(c) aiSay(`<b>${c.title}</b><br>${c.body()}`);
+  });
+});
+function applyText(targetId){
+  const v=document.getElementById('ctl').value;
+  document.getElementById(targetId).textContent=v;
+  toast('Updated on the card ✓');
+}
+
+/* ── chips ── */
+const palettes={
+  crimson:{bg:'linear-gradient(160deg,#800f2f 0%,#a4133c 55%,#c9184a 100%)', strip:'linear-gradient(120deg,#ff758f 0%,#ff4d6d 45%,#c9184a 100%)'},
+  sunset:{bg:'linear-gradient(160deg,#9d0208 0%,#e85d04 60%,#faa307 100%)', strip:'linear-gradient(120deg,#ffba08 0%,#f48c06 50%,#e85d04 100%)'},
+  ocean:{bg:'linear-gradient(160deg,#03045e 0%,#023e8a 55%,#0077b6 100%)', strip:'linear-gradient(120deg,#90e0ef 0%,#00b4d8 50%,#0096c7 100%)'},
+  forest:{bg:'linear-gradient(160deg,#081c15 0%,#1b4332 55%,#2d6a4f 100%)', strip:'linear-gradient(120deg,#95d5b2 0%,#52b788 50%,#40916c 100%)'},
+  night:{bg:'linear-gradient(160deg,#10002b 0%,#3c096c 55%,#5a189a 100%)', strip:'linear-gradient(120deg,#c77dff 0%,#9d4edd 50%,#7b2cbf 100%)'}
+};
+function setPalette(name,swEl){
+  const p=palettes[name];
+  document.querySelector('.face.front').style.background=p.bg;
+  document.querySelector('.strip').style.background=p.strip;
+  if(swEl){document.querySelectorAll('.sw').forEach(s=>s.classList.remove('on')); swEl.classList.add('on');}
+  toast(name.charAt(0).toUpperCase()+name.slice(1)+' palette applied');
+}
+function chipPalette(){
+  userSay('Try a palette');
+  aiSay(`Here are a few directions — <b>crimson</b> is the brand default. Click to try live:
+    <div class="swatches">
+      <div class="sw crimson on" onclick="setPalette('crimson',this)"></div>
+      <div class="sw sunset" onclick="setPalette('sunset',this)"></div>
+      <div class="sw ocean" onclick="setPalette('ocean',this)"></div>
+      <div class="sw forest" onclick="setPalette('forest',this)"></div>
+      <div class="sw night" onclick="setPalette('night',this)"></div>
+    </div>`);
+}
+function chipCelebrate(){
+  userSay('Preview celebration state');
+  document.getElementById('promiseVal').textContent='I completed my act of kindness 🎉';
+  document.getElementById('actsVal').textContent='1';
+  document.getElementById('globalVal').textContent='Act #251,442 of one million';
+  aiSay(`This is what the card becomes when Sarah completes her act — the PATCH carries<br><b>changeMessage: “You did it — act #251,442 of one million 💗”</b><br>which lands as a lock-screen notification, and all remaining reminders are silenced.`);
+  toast('Push update applied to card ✓');
+}
+function chipReminder(){
+  userSay('Preview reminder push');
+  aiSay(`Day-before reminder. The service PATCHes the card and the phone shows:<br><br>
+  <div style="background:#1a1a1a;color:#fff;border-radius:12px;padding:10px 13px;font-size:12.5px;display:flex;gap:9px;align-items:center;">
+    <div style="width:26px;height:26px;border-radius:7px;background:linear-gradient(140deg,#800f2f,#c9184a);display:grid;place-items:center;">♥</div>
+    <div><b>All About Love</b><br><span style="opacity:.85;">Your act of kindness ends tomorrow.</span></div>
+  </div><br>No app installed. No phone number. Just the card.`);
+}
+function chipReset(){
+  userSay('Reset');
+  document.getElementById('promiseVal').textContent='I promised an act of kindness';
+  document.getElementById('actsVal').textContent='0';
+  document.getElementById('globalVal').textContent='Act #247,801 of one million';
+  setPalette('crimson',null);
+  document.querySelectorAll('.sw').forEach(s=>s.classList.remove('on'));
+  const cs=document.querySelector('.sw.crimson'); if(cs) cs.classList.add('on');
+  pass.classList.remove('flipped');
+  aiSay('Back to the saved draft.');
+}
+
+/* ── chat ── */
+function sendChat(){
+  const inp=document.getElementById('chatInput'); const v=inp.value.trim(); if(!v) return;
+  userSay(v); inp.value='';
+  const low=v.toLowerCase();
+  if(low.includes('crimson')) {setPalette('crimson',null); aiSay('Done — crimson it is.');}
+  else if(low.includes('sunset')||low.includes('orange')) {setPalette('sunset',null); aiSay('Warmed it up with the sunset palette.');}
+  else if(low.includes('ocean')||low.includes('blue')) {setPalette('ocean',null); aiSay('Cooled it down — ocean palette applied.');}
+  else if(low.includes('flip')) {flipPass(); aiSay('Flipped — this is the back of the card.');}
+  else if(low.includes('celebrat')||low.includes('complete')) {chipCelebrate();}
+  else aiSay(`In the real builder I'd parse that and edit the template directly — this mockup wires up the clicks, chips, and palettes so you can feel the interaction. Try clicking the card, or: <i>“make it ocean blue”, “flip the card”</i>.`);
+}
+
+/* ── platform + code toggles ── */
+document.getElementById('platformSeg').addEventListener('click',e=>{
+  if(e.target.tagName!=='BUTTON')return;
+  [...e.currentTarget.children].forEach(b=>b.classList.remove('on')); e.target.classList.add('on');
+  toast(e.target.dataset.p==='google'?'Google Wallet preview (same template, Google layout)':'Apple Wallet preview');
+});
+const codeDrawer=document.getElementById('codeDrawer');
+document.getElementById('viewSeg').addEventListener('click',e=>{
+  if(e.target.tagName!=='BUTTON')return;
+  [...e.currentTarget.children].forEach(b=>b.classList.remove('on')); e.target.classList.add('on');
+  codeDrawer.classList.toggle('show', e.target.dataset.v==='code');
+  if(e.target.dataset.v==='code') renderCode();
+});
+function renderCode(){
+  document.getElementById('codeBody').innerHTML=
+`<span class="k">// POST /v1/passes  —  the template this canvas is editing</span>
+{
+  <span class="s">"brand"</span>: <span class="s">"love"</span>,
+  <span class="s">"externalId"</span>: <span class="s">"photo_8f3a…"</span>,
+  <span class="s">"fields"</span>: {
+    <span class="s">"name"</span>: <span class="s">"${document.getElementById('nameVal').textContent}"</span>,
+    <span class="s">"promise"</span>: <span class="s">"${document.getElementById('promiseVal').textContent}"</span>,
+    <span class="s">"promiseDue"</span>: <span class="s">"2026-08-11"</span>,
+    <span class="s">"actsCompleted"</span>: <span class="n">${document.getElementById('actsVal').textContent}</span>,
+    <span class="s">"globalCount"</span>: <span class="n">247801</span>
+  },
+  <span class="s">"imageUrl"</span>: <span class="s">"https://…/photo.jpg"</span>,
+  <span class="s">"barcode"</span>: <span class="s">"https://allaboutlove.camera/p/8f3a…"</span>,
+  <span class="s">"locations"</span>: [{ <span class="s">"lat"</span>: <span class="n">31.89</span>, <span class="s">"lng"</span>: <span class="n">35.20</span>, <span class="s">"relevantText"</span>: <span class="s">"Your kindness card is here"</span> }]
+}
+
+<span class="k">// PATCH on completion → lock-screen notification</span>
+{
+  <span class="s">"fields"</span>: { <span class="s">"actsCompleted"</span>: <span class="n">1</span>, <span class="s">"globalCount"</span>: <span class="n">251442</span> },
+  <span class="s">"changeMessage"</span>: <span class="s">"You did it — act #251,442 of one million 💗"</span>
+}`;
+}
+</script>
+</body>
+</html>
