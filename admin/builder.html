@@ -48,6 +48,10 @@
   .colorrow input[type=color]{width:38px;height:30px;border:1px solid var(--line);border-radius:8px;padding:2px;background:#fff;}
   .colorrow span{font-size:12px;color:var(--ink-soft);}
   .addbtns{display:flex;flex-wrap:wrap;gap:8px;}
+  .place-btn{display:block;width:100%;text-align:left;border:1px solid var(--line);background:#fff;border-radius:11px;padding:10px 12px;margin-bottom:8px;cursor:pointer;font-family:inherit;transition:all .12s;}
+  .place-btn:hover{border-color:var(--crimson);background:var(--blush);}
+  .pb-name{display:block;font-size:13px;font-weight:700;color:var(--ink);}
+  .pb-hint{display:block;font-size:11px;color:var(--ink-soft);margin-top:2px;}
   .chip{border:1px solid var(--line);background:#fff;border-radius:99px;padding:6px 12px;font-size:12px;cursor:pointer;font-family:inherit;font-weight:600;}
   .chip:hover{border-color:var(--crimson);color:var(--crimson);}
 
@@ -158,7 +162,15 @@
 let KEY=null, brandId=null, tpl=null, dirty=false, flipped=false;
 let sel=null; // {type:'field',section,idx} | {type:'logo'} | {type:'colors'} | {type:'barcode'}
 
-const SECTIONS=[['header','HEADER (top right)'],['primary','PRIMARY (headline)'],['secondary','SECONDARY'],['auxiliary','AUXILIARY'],['back','BACK OF CARD']];
+/* Plain-language section names — no PassKit jargon (David's rule) */
+const SECTION_META={
+  header:   {name:'Top corner',    hint:'small, next to the logo — always visible', eg:'a due date'},
+  primary:  {name:'Headline',     hint:'the big statement across the card',        eg:'the promise'},
+  secondary:{name:'Details · row 1',hint:'first row of small facts',               eg:'name & event'},
+  auxiliary:{name:'Details · row 2',hint:'second row of small facts',              eg:'counters'},
+  back:     {name:'Back of card', hint:'links & longer text, on the flip side',    eg:'photo link'},
+};
+const SECTIONS=Object.keys(SECTION_META);
 
 function toast(t){const el=document.getElementById('toast');el.textContent=t;el.classList.add('show');setTimeout(()=>el.classList.remove('show'),2600);}
 function esc(s){return s?String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])):'';}
@@ -248,7 +260,7 @@ function renderCard(){
   p.innerHTML=html;
   p.onclick=()=>pick('colors');
 }
-function sectionAdd(section){return `<div class="empty-sec" onclick="event.stopPropagation();addField('${section}')">+ add ${section} field</div>`;}
+function sectionAdd(section){return `<div class="empty-sec" onclick="event.stopPropagation();startAdd('${section}')">+ add to ${SECTION_META[section].name.toLowerCase()}</div>`;}
 function barcodePreview(){
   const b=tpl.barcode||{};
   if(b.source==='fixed')return b.fixed||'(set a link)';
@@ -269,12 +281,18 @@ function renderPanel(){
   if(!tpl){P.innerHTML='';return;}
   if(!sel){
     P.innerHTML=`<div class="guide">This is <b>${esc(tpl.orgName)}</b>'s card template. Click anything on the card to edit it — fields, colors, the logo, the QR. When it's right, hit <b>Publish</b>: every existing ${esc(brandId)} card restyles itself automatically.</div>
-    <div class="ed"><h3>QUICK ACTIONS</h3><div class="addbtns">
+    <div class="ed"><h3>EDIT</h3><div class="addbtns">
       <button class="chip" onclick="pick('logo')">✎ Name & logo</button>
       <button class="chip" onclick="pick('colors')">🎨 Colors</button>
       <button class="chip" onclick="pick('barcode')">⛶ QR / link</button>
-      ${SECTIONS.map(([s])=>`<button class="chip" onclick="addField('${s}')">＋ ${s} field</button>`).join('')}
-    </div></div>`;
+    </div></div>
+    <div class="ed"><h3>ADD SOMETHING TO THE CARD</h3>
+      ${SECTIONS.map(s=>{const m=SECTION_META[s];return `
+      <button class="place-btn" onclick="startAdd('${s}')">
+        <span class="pb-name">＋ ${m.name}</span>
+        <span class="pb-hint">${m.hint} — e.g. ${m.eg}</span>
+      </button>`;}).join('')}
+    </div>`;
     return;
   }
   if(sel.type==='logo'){
@@ -317,13 +335,28 @@ function renderPanel(){
     </div>`;
     return;
   }
+  if(sel.type==='add'){
+    const meta=SECTION_META[sel.section];
+    P.innerHTML=`<div class="guide">Adding to <b>${meta.name}</b> — ${meta.hint}.</div>
+    <div class="ed"><h3>NEW ITEM</h3>
+      <label>WHAT IS IT? (e.g. "Points earned", "Next visit")</label>
+      <input type="text" id="newFieldName" placeholder="Points earned" onkeydown="if(event.key==='Enter')confirmAdd()">
+      <div style="display:flex;gap:8px;margin-top:12px">
+        <button class="btn primary" onclick="confirmAdd()">Add to card</button>
+        <button class="btn" onclick="showHome()">Cancel</button>
+      </div>
+    </div>`;
+    setTimeout(()=>document.getElementById('newFieldName').focus(),50);
+    return;
+  }
   // field editor
   const f=tpl.fields[sel.section][sel.idx];
-  P.innerHTML=`<div class="guide">Editing a <b>${sel.section}</b> field. The label is the small caption; the default shows until a card sets its own value via the API (key: <b>${esc(f.key)}</b>).</div>
-  <div class="ed"><h3>FIELD</h3>
+  const meta=SECTION_META[sel.section];
+  P.innerHTML=`<div class="guide">Editing an item in <b>${meta.name}</b> (${meta.hint}). The label is the small caption; the default shows until a card gets its own value.</div>
+  <div class="ed"><h3>ITEM</h3>
     <div class="rowline">
       <div><label>LABEL (shown on card)</label><input type="text" value="${esc(f.label||'')}" oninput="tpl.fields['${sel.section}'][${sel.idx}].label=this.value;markDirty()"></div>
-      <div><label>KEY (for the API)</label><input type="text" value="${esc(f.key)}" oninput="tpl.fields['${sel.section}'][${sel.idx}].key=this.value.replace(/\\W/g,'');markDirty()"></div>
+      <div><label>API NAME (advanced)</label><input type="text" value="${esc(f.key)}" oninput="tpl.fields['${sel.section}'][${sel.idx}].key=this.value.replace(/\\W/g,'');markDirty()"></div>
     </div>
     ${f.value!=null
       ?`<label>FIXED TEXT ({barcode}/{photoUrl} allowed)</label><input type="text" value="${esc(f.value)}" oninput="tpl.fields['${sel.section}'][${sel.idx}].value=this.value;markDirty()">`
@@ -401,20 +434,23 @@ function handleChat(low,raw){
   m=raw.match(/(?:call|name) (?:it|the card) (.+)/i);
   if(m){tpl.orgName=m[1].trim();tpl.logoText=m[1].trim();markDirty();aiSay(`It's now <b>${esc(m[1].trim())}</b>.`);return;}
   if(low.includes('publish')){publish();return;}
-  aiSay(`I understand: <b>palette names</b> (crimson/sunset/ocean/forest/night or “blue”, “green”…), <b>add field NAME to SECTION</b>, <b>rename X to Y</b>, <b>call it NAME</b>, <b>flip</b>, <b>publish</b>. For everything else — clicking the card is fastest. (My full AI brain arrives in a later step; today I'm quick-commands.)`);
+  aiSay(`I understand: <b>colors</b> (“make it ocean blue”, “sunset”…), <b>add field points</b>, <b>rename guest to member</b>, <b>call it Binah</b>, <b>flip</b>, <b>publish</b>. For everything else — clicking the card is fastest. (My full AI brain arrives in a later step; today I'm quick-commands.)`);
 }
 setTimeout(()=>aiSay('Hi David — tell me things like <b>“make it ocean blue”</b>, <b>“add field points”</b>, or click the card directly. <b>Publish</b> makes it real for every card.'),600);
 
 /* ── field add/remove/changeMessage ── */
-function addField(section){
-  const key=prompt('New field key (letters/numbers, e.g. points):');
-  if(!key)return;
-  const clean=key.replace(/\W/g,'');
+function startAdd(section){sel={type:'add',section};renderPanel();}
+function confirmAdd(){
+  const name=(document.getElementById('newFieldName')||{}).value?.trim();
+  if(!name){toast('Give it a name first');return;}
+  const section=sel.section;
+  const key=name.toLowerCase().replace(/\W/g,'').slice(0,24)||'field';
   tpl.fields[section]=tpl.fields[section]||[];
-  tpl.fields[section].push({key:clean,label:clean.toUpperCase()});
-  if(tpl.defaults[clean]==null)tpl.defaults[clean]='';
+  tpl.fields[section].push({key,label:name.toUpperCase()});
+  if(tpl.defaults[key]==null)tpl.defaults[key]='';
   markDirty();pick('field',section,tpl.fields[section].length-1);
 }
+function addField(section){startAdd(section);} // chat + card placeholders route here
 function removeField(section,idx){
   tpl.fields[section].splice(idx,1);
   sel=null;markDirty();renderPanel();
