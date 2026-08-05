@@ -7,7 +7,8 @@ CREATE TABLE IF NOT EXISTS passes (
   auth_token  TEXT NOT NULL,          -- per-pass ApplePass authentication token
   fields_json TEXT NOT NULL,          -- current field values (JSON)
   created_at  INTEGER NOT NULL,       -- unix seconds
-  updated_at  INTEGER NOT NULL
+  updated_at  INTEGER NOT NULL,
+  archived_at INTEGER                 -- NULL = active; set = archived (never destroyed)
 );
 
 CREATE TABLE IF NOT EXISTS apple_registrations (

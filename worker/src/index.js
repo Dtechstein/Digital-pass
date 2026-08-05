@@ -138,9 +138,9 @@ async function route(request, env) {
 
     if (m === 'GET' && seg.length === 2) {
       const rows = await env.DB.prepare(
-        `SELECT p.serial, p.fields_json, p.created_at, p.updated_at,
+        `SELECT p.serial, p.fields_json, p.created_at, p.updated_at, p.archived_at,
                 (SELECT COUNT(*) FROM apple_registrations r WHERE r.serial = p.serial) AS registrations
-         FROM passes p ORDER BY p.created_at DESC LIMIT 50`
+         FROM passes p ORDER BY p.created_at DESC LIMIT 100`
       ).all();
       const passes = (rows.results || []).map((r) => {
         let f = {};
@@ -151,6 +151,7 @@ async function route(request, env) {
           event: f.event || null,
           created_at: r.created_at,
           updated_at: r.updated_at,
+          archived_at: r.archived_at || null,
           registrations: r.registrations,
         };
       });
@@ -170,10 +171,29 @@ async function route(request, env) {
       });
     }
 
+    // Archive / unarchive: data is NEVER destroyed. Archived cards still
+    // serve updates to installed devices; they're just hidden from the
+    // default admin list.
+    if (m === 'POST' && url.searchParams.get('action') === 'archive') {
+      await env.DB.prepare('UPDATE passes SET archived_at=? WHERE serial=?')
+        .bind(Math.floor(Date.now() / 1000), serial).run();
+      return json({ ok: true, archived: serial });
+    }
+    if (m === 'POST' && url.searchParams.get('action') === 'unarchive') {
+      await env.DB.prepare('UPDATE passes SET archived_at=NULL WHERE serial=?').bind(serial).run();
+      return json({ ok: true, unarchived: serial });
+    }
+
+    // Privacy purge (GDPR right-to-erasure) — deliberately API-only, no UI
+    // button. Requires echoing the serial in X-Confirm-Purge to prevent
+    // accidents. This is the ONLY true deletion path.
     if (m === 'DELETE') {
+      if (request.headers.get('X-Confirm-Purge') !== serial) {
+        return json({ error: 'purge_not_confirmed', hint: 'set X-Confirm-Purge: <serial>. For normal removal use ?action=archive.' }, 400);
+      }
       await env.DB.prepare('DELETE FROM apple_registrations WHERE serial=?').bind(serial).run();
       await env.DB.prepare('DELETE FROM passes WHERE serial=?').bind(serial).run();
-      return json({ ok: true, deleted: serial });
+      return json({ ok: true, purged: serial });
     }
 
     if (m === 'PATCH') {
