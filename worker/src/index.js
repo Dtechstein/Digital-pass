@@ -37,7 +37,7 @@ import {
 } from './platform.js';
 import { appleThumbnails } from './images.js';
 import { PASS_IMAGES } from './assets.gen.js';
-import { ADMIN_HTML } from './admin.gen.js';
+import { ADMIN_HTML, BUILDER_HTML } from './admin.gen.js';
 
 export default {
   async fetch(request, env) {
@@ -62,9 +62,12 @@ async function route(request, env) {
 
   if (p === '/health') return json({ ok: true, service: 'digital-pass', step: 4, db: !!env.DB });
 
-  // ── admin UI ─────────────────────────────────────────────────
+  // ── admin UI + builder ───────────────────────────────────────
   if ((p === '/admin' || p === '') && m === 'GET') {
     return new Response(ADMIN_HTML, { headers: { 'Content-Type': 'text/html; charset=utf-8' } });
+  }
+  if (p === '/admin/builder' && m === 'GET') {
+    return new Response(BUILDER_HTML, { headers: { 'Content-Type': 'text/html; charset=utf-8' } });
   }
 
   // ── mint a legacy test pass ──────────────────────────────────

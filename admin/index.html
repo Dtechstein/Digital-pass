@@ -89,6 +89,7 @@
   <div class="crumb">All About Love · Kindness Card</div>
   <span class="demo-badge" id="demoBadge" style="display:none">DEMO DATA</span>
   <div class="right">
+    <button class="btn" id="builderBtn" style="display:none" onclick="location.href='/admin/builder'">🎨 Builder</button>
     <button class="btn" id="brandsBtn" style="display:none" onclick="showBrands()">🏷 Brands</button>
     <button class="btn" id="newCardBtn" style="display:none">＋ New test card</button>
     <button class="btn ghost" id="lockBtn" style="display:none">Sign out</button>
@@ -274,6 +275,7 @@ function enter() {
   document.getElementById('main').style.display = 'block';
   document.getElementById('newCardBtn').style.display = '';
   document.getElementById('brandsBtn').style.display = '';
+  document.getElementById('builderBtn').style.display = '';
   document.getElementById('lockBtn').style.display = '';
   loadPasses();
 }

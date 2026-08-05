@@ -1,0 +1,331 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Pass Studio — Builder</title>
+<style>
+  :root{
+    --bg:#f6f6f4; --panel:#fff; --ink:#1a1a1a; --ink-soft:#6b6b6b; --line:#e7e5e0;
+    --crimson:#a4133c; --crimson-deep:#800f2f; --blush:#fff0f3; --chip:#f1efe9; --good:#1a7f4e;
+  }
+  *{box-sizing:border-box;margin:0;padding:0;}
+  html,body{height:100%;}
+  body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Inter,sans-serif;background:var(--bg);color:var(--ink);overflow:hidden;}
+  .app{display:flex;flex-direction:column;height:100vh;}
+
+  .topbar{display:flex;align-items:center;gap:14px;padding:10px 18px;background:var(--panel);border-bottom:1px solid var(--line);}
+  .brandmark{display:flex;align-items:center;gap:9px;font-weight:700;font-size:15px;}
+  .brandmark .dot{width:26px;height:26px;border-radius:8px;background:linear-gradient(160deg,#800f2f,#c9184a);display:grid;place-items:center;color:#fff;font-size:13px;}
+  .crumb{color:var(--ink-soft);font-size:13px;}
+  select#brandSel{border:1px solid var(--line);border-radius:9px;padding:7px 10px;font-size:13px;font-family:inherit;background:#fff;}
+  .topbar .right{margin-left:auto;display:flex;gap:10px;}
+  .btn{border:1px solid var(--line);background:#fff;padding:8px 14px;border-radius:9px;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit;color:var(--ink);}
+  .btn:hover{border-color:#cfcbc2;}
+  .btn.primary{background:var(--crimson);border-color:var(--crimson);color:#fff;}
+  .btn.primary:disabled{opacity:.5;cursor:default;}
+
+  .main{display:flex;flex:1;min-height:0;}
+
+  /* ── companion / editor panel (LEFT 1/3) ── */
+  .companion{flex:1;min-width:330px;max-width:440px;background:var(--panel);border-right:1px solid var(--line);display:flex;flex-direction:column;}
+  .comp-head{padding:13px 18px;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:10px;}
+  .comp-avatar{width:32px;height:32px;border-radius:50%;background:conic-gradient(from 210deg,#a4133c,#ff758f,#ffd166,#a4133c);display:grid;place-items:center;color:#fff;font-size:14px;}
+  .comp-head .t{font-weight:700;font-size:14px;}
+  .comp-head .s{font-size:11.5px;color:var(--good);}
+  .comp-body{flex:1;overflow-y:auto;padding:16px;}
+  .guide{background:#faf8f3;border:1px solid var(--line);border-radius:4px 14px 14px 14px;padding:11px 13px;font-size:13px;line-height:1.5;margin-bottom:14px;}
+  .guide b{color:var(--crimson);}
+  .ed{border:1px solid var(--line);border-radius:14px;padding:14px;margin-bottom:14px;background:#fff;}
+  .ed h3{font-size:11px;font-weight:800;letter-spacing:.8px;color:var(--crimson);margin-bottom:10px;}
+  .ed label{display:block;font-size:10.5px;font-weight:700;letter-spacing:.5px;color:var(--ink-soft);margin:9px 0 4px;}
+  .ed input[type=text],.ed select,.ed textarea{width:100%;border:1px solid var(--line);border-radius:8px;padding:8px 10px;font-size:13px;font-family:inherit;}
+  .ed .rowline{display:flex;gap:10px;}
+  .ed .rowline>div{flex:1;}
+  .ed .mini-note{font-size:11.5px;color:var(--ink-soft);margin-top:8px;line-height:1.45;}
+  .ed .danger{color:var(--crimson);border-color:#f0d4dc;margin-top:10px;}
+  .colorrow{display:flex;align-items:center;gap:10px;margin-top:6px;}
+  .colorrow input[type=color]{width:38px;height:30px;border:1px solid var(--line);border-radius:8px;padding:2px;background:#fff;}
+  .colorrow span{font-size:12px;color:var(--ink-soft);}
+  .addbtns{display:flex;flex-wrap:wrap;gap:8px;}
+  .chip{border:1px solid var(--line);background:#fff;border-radius:99px;padding:6px 12px;font-size:12px;cursor:pointer;font-family:inherit;font-weight:600;}
+  .chip:hover{border-color:var(--crimson);color:var(--crimson);}
+
+  /* ── canvas (RIGHT 2/3) ── */
+  .viewer{flex:2;position:relative;display:flex;align-items:center;justify-content:center;overflow:auto;padding:30px;
+    background:radial-gradient(ellipse at 30% 20%, #efece6 0%, transparent 55%),var(--bg);}
+  .viewer-hint{position:absolute;top:14px;left:50%;transform:translateX(-50%);font-size:12px;color:var(--ink-soft);background:#fffdf8;border:1px solid var(--line);padding:6px 14px;border-radius:99px;white-space:nowrap;}
+  .viewer-hint b{color:var(--crimson);}
+  .viewer-tools{position:absolute;bottom:16px;left:50%;transform:translateX(-50%);display:flex;gap:8px;}
+
+  .pass{width:340px;border-radius:18px;color:#fff;box-shadow:0 24px 60px -18px rgba(0,0,0,.4);overflow:hidden;}
+  .pass .inner{padding:0 0 6px;}
+  .phead{display:flex;align-items:flex-start;justify-content:space-between;padding:13px 15px 10px;gap:10px;}
+  .plogo{display:flex;align-items:center;gap:8px;min-width:0;}
+  .plogo .heart{width:28px;height:28px;border-radius:8px;background:rgba(255,255,255,.18);display:grid;place-items:center;font-size:14px;flex-shrink:0;}
+  .plogo span{font-size:13px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  .hfields{display:flex;gap:12px;flex-shrink:0;}
+  .pf{cursor:pointer;position:relative;border-radius:6px;padding:2px 4px;transition:box-shadow .12s;}
+  .pf:hover{box-shadow:inset 0 0 0 2px rgba(255,255,255,.5);}
+  .pf.sel{box-shadow:inset 0 0 0 2px #ffd166;}
+  .pf .lbl{font-size:8.5px;letter-spacing:1.1px;opacity:.75;font-weight:700;}
+  .pf .val{font-weight:700;}
+  .hfields .val{font-size:13px;text-align:right;}
+  .pbody{padding:6px 15px 12px;}
+  .primary-f .val{font-size:17.5px;line-height:1.25;}
+  .frow{display:flex;justify-content:space-between;gap:10px;margin-top:11px;flex-wrap:wrap;}
+  .frow .pf .val{font-size:13.5px;}
+  .qr-zone{display:flex;justify-content:center;padding:8px 0 12px;cursor:pointer;border-radius:8px;}
+  .qr-zone:hover{box-shadow:inset 0 0 0 2px rgba(255,255,255,.5);}
+  .qr-zone.sel{box-shadow:inset 0 0 0 2px #ffd166;}
+  .qr-card{background:#fff;border-radius:12px;padding:8px;display:flex;flex-direction:column;align-items:center;gap:4px;}
+  .qrbox{width:74px;height:74px;background:repeating-conic-gradient(#111 0% 25%, #fff 0% 50%) 0 0/14px 14px;border-radius:4px;}
+  .qr-cap{font-size:8px;color:#777;font-weight:600;max-width:120px;text-align:center;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+  .backface{padding:4px 15px 12px;}
+  .bfield{padding:10px 4px;border-top:1px solid rgba(255,255,255,.16);}
+  .empty-sec{font-size:10px;opacity:.5;padding:6px 4px;border:1px dashed rgba(255,255,255,.35);border-radius:8px;text-align:center;margin-top:10px;cursor:pointer;}
+
+  .toast{position:fixed;bottom:22px;right:22px;background:var(--ink);color:#fff;font-size:13px;padding:10px 18px;border-radius:99px;opacity:0;transition:all .25s;pointer-events:none;z-index:99;}
+  .toast.show{opacity:1;}
+  .gate{max-width:420px;margin:90px auto;background:#fff;border:1px solid var(--line);border-radius:16px;padding:28px;text-align:center;}
+  .gate input{width:100%;border:1px solid var(--line);border-radius:10px;padding:11px;font-size:14px;text-align:center;margin:14px 0 10px;font-family:inherit;}
+</style>
+</head>
+<body>
+<div class="app" id="app" style="display:none">
+  <div class="topbar">
+    <div class="brandmark"><div class="dot">🎨</div> Pass Studio Builder</div>
+    <select id="brandSel" onchange="loadBrand(this.value)"></select>
+    <span class="crumb" id="dirtyNote"></span>
+    <div class="right">
+      <button class="btn" onclick="location.href='/admin'">← Cards</button>
+      <button class="btn" id="flipBtn" onclick="flipped=!flipped;renderCard()">↺ Flip card</button>
+      <button class="btn primary" id="publishBtn" onclick="publish()" disabled>Publish</button>
+    </div>
+  </div>
+
+  <div class="main">
+    <div class="companion">
+      <div class="comp-head">
+        <div class="comp-avatar">✦</div>
+        <div><div class="t">Companion</div><div class="s">● Editing the template</div></div>
+      </div>
+      <div class="comp-body" id="panel"></div>
+    </div>
+
+    <div class="viewer">
+      <div class="viewer-hint">Click any part of the card — <b>you're editing the real template</b></div>
+      <div class="pass" id="pass"></div>
+      <div class="viewer-tools"></div>
+    </div>
+  </div>
+</div>
+
+<div class="gate" id="gate" style="display:none">
+  <h2 style="font-size:17px">Builder</h2>
+  <p style="font-size:13px;color:var(--ink-soft);margin-top:6px">Enter your admin key</p>
+  <input type="password" id="keyInput" onkeydown="if(event.key==='Enter')connect()">
+  <button class="btn primary" style="width:100%" onclick="connect()">Open builder</button>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+let KEY=null, brandId=null, tpl=null, dirty=false, flipped=false;
+let sel=null; // {type:'field',section,idx} | {type:'logo'} | {type:'colors'} | {type:'barcode'}
+
+const SECTIONS=[['header','HEADER (top right)'],['primary','PRIMARY (headline)'],['secondary','SECONDARY'],['auxiliary','AUXILIARY'],['back','BACK OF CARD']];
+
+function toast(t){const el=document.getElementById('toast');el.textContent=t;el.classList.add('show');setTimeout(()=>el.classList.remove('show'),2600);}
+function esc(s){return s?String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])):'';}
+async function api(path,opts={}){
+  const res=await fetch(path,{...opts,headers:{'X-Admin-Key':KEY,'Content-Type':'application/json',...(opts.headers||{})}});
+  if(res.status===401)throw new Error('unauthorized');
+  return res.json();
+}
+
+/* ── auth + boot ── */
+async function connect(){
+  KEY=document.getElementById('keyInput').value.trim();
+  try{await api('/v1/brands');localStorage.setItem('psk',KEY);boot();}
+  catch{toast('Key rejected');}
+}
+async function boot(){
+  document.getElementById('gate').style.display='none';
+  document.getElementById('app').style.display='flex';
+  const data=await api('/v1/brands');
+  const s=document.getElementById('brandSel');
+  s.innerHTML=(data.brands||[]).map(b=>`<option value="${esc(b.id)}">${esc(b.name)} (${esc(b.id)})</option>`).join('');
+  if(data.brands&&data.brands.length)loadBrand(data.brands[0].id);
+  else document.getElementById('panel').innerHTML='<div class="guide">No brands yet — create one in <b>Cards → 🏷 Brands</b> first.</div>';
+}
+(function(){
+  const saved=localStorage.getItem('psk');
+  if(saved){KEY=saved;api('/v1/brands').then(()=>boot()).catch(()=>{localStorage.removeItem('psk');document.getElementById('gate').style.display='block';});}
+  else document.getElementById('gate').style.display='block';
+})();
+
+/* ── template load/publish ── */
+async function loadBrand(id){
+  if(dirty&&!confirm('Discard unpublished changes?'))return;
+  brandId=id;
+  const data=await api('/v1/brands/'+id+'/template');
+  tpl=data.effective; dirty=false; sel=null; flipped=false;
+  updateDirty(); renderCard(); showHome();
+}
+async function publish(){
+  try{
+    await api('/v1/brands/'+brandId+'/template',{method:'PUT',body:JSON.stringify(tpl)});
+    dirty=false;updateDirty();
+    toast('🚀 Published — every '+brandId+' card re-renders on its next refresh');
+  }catch(e){toast('Publish failed: '+e.message);}
+}
+function markDirty(){dirty=true;updateDirty();renderCard();}
+function updateDirty(){
+  document.getElementById('publishBtn').disabled=!dirty;
+  document.getElementById('dirtyNote').textContent=dirty?'● unpublished changes':'';
+}
+
+/* ── card canvas ── */
+function fval(f){return f.value!=null?f.value.replace('{barcode}','(link)').replace('{photoUrl}','(photo)'):(tpl.defaults[f.key]??'—');}
+function fieldHtml(section,i,f,extra){
+  const s=sel&&sel.type==='field'&&sel.section===section&&sel.idx===i?' sel':'';
+  return `<div class="pf${s} ${extra||''}" onclick="event.stopPropagation();pick('field','${section}',${i})">
+    <div class="lbl">${esc(f.label||f.key)}</div><div class="val">${esc(fval(f))}</div></div>`;
+}
+function renderCard(){
+  const p=document.getElementById('pass');
+  p.style.background=`linear-gradient(160deg, ${shade(tpl.colors.bg,-18)} 0%, ${tpl.colors.bg} 55%, ${shade(tpl.colors.bg,22)} 100%)`;
+  p.style.color=tpl.colors.fg;
+  const F=tpl.fields;
+  let html=`<div class="inner">
+    <div class="phead">
+      <div class="plogo pf${sel&&sel.type==='logo'?' sel':''}" onclick="event.stopPropagation();pick('logo')">
+        <div class="heart">💗</div><span>${esc(tpl.logoText||tpl.orgName)}</span>
+      </div>
+      <div class="hfields">${(F.header||[]).map((f,i)=>fieldHtml('header',i,f)).join('')||sectionAdd('header')}</div>
+    </div>`;
+  if(!flipped){
+    html+=`<div class="pbody">
+      ${(F.primary||[]).map((f,i)=>fieldHtml('primary',i,f,'primary-f')).join('')||sectionAdd('primary')}
+      <div class="frow">${(F.secondary||[]).map((f,i)=>fieldHtml('secondary',i,f)).join('')||sectionAdd('secondary')}</div>
+      <div class="frow">${(F.auxiliary||[]).map((f,i)=>fieldHtml('auxiliary',i,f)).join('')||sectionAdd('auxiliary')}</div>
+    </div>
+    <div class="qr-zone${sel&&sel.type==='barcode'?' sel':''}" onclick="event.stopPropagation();pick('barcode')">
+      <div class="qr-card"><div class="qrbox"></div><div class="qr-cap">${esc(barcodePreview())}</div></div>
+    </div>`;
+  } else {
+    html+=`<div class="backface">
+      <div style="font-size:10px;font-weight:800;letter-spacing:1px;opacity:.7;padding:4px">BACK OF CARD</div>
+      ${(F.back||[]).map((f,i)=>`<div class="bfield">${fieldHtml('back',i,f)}</div>`).join('')||sectionAdd('back')}
+    </div>`;
+  }
+  html+='</div>';
+  p.innerHTML=html;
+  p.onclick=()=>pick('colors');
+}
+function sectionAdd(section){return `<div class="empty-sec" onclick="event.stopPropagation();addField('${section}')">+ add ${section} field</div>`;}
+function barcodePreview(){
+  const b=tpl.barcode||{};
+  if(b.source==='fixed')return b.fixed||'(set a link)';
+  if(b.source==='photoUrl')return "each card's photo";
+  return "each card's own link";
+}
+function shade(rgb,amt){
+  const m=String(rgb).match(/(\d+)\s*,\s*(\d+)\s*,\s*(\d+)/);if(!m)return rgb;
+  const f=n=>Math.max(0,Math.min(255,Number(n)+amt));
+  return `rgb(${f(m[1])}, ${f(m[2])}, ${f(m[3])})`;
+}
+
+/* ── selection → panel ── */
+function pick(type,section,idx){sel={type,section,idx};renderCard();renderPanel();}
+function showHome(){sel=null;renderPanel();}
+function renderPanel(){
+  const P=document.getElementById('panel');
+  if(!tpl){P.innerHTML='';return;}
+  if(!sel){
+    P.innerHTML=`<div class="guide">This is <b>${esc(tpl.orgName)}</b>'s card template. Click anything on the card to edit it — fields, colors, the logo, the QR. When it's right, hit <b>Publish</b>: every existing ${esc(brandId)} card restyles itself automatically.</div>
+    <div class="ed"><h3>QUICK ACTIONS</h3><div class="addbtns">
+      <button class="chip" onclick="pick('logo')">✎ Name & logo</button>
+      <button class="chip" onclick="pick('colors')">🎨 Colors</button>
+      <button class="chip" onclick="pick('barcode')">⛶ QR / link</button>
+      ${SECTIONS.map(([s])=>`<button class="chip" onclick="addField('${s}')">＋ ${s} field</button>`).join('')}
+    </div></div>`;
+    return;
+  }
+  if(sel.type==='logo'){
+    P.innerHTML=`<div class="guide">The card's identity — shown top-left and as the notification title.</div>
+    <div class="ed"><h3>NAME & LOGO</h3>
+      <label>ORGANIZATION NAME</label><input type="text" value="${esc(tpl.orgName)}" oninput="tpl.orgName=this.value;markDirty()">
+      <label>LOGO TEXT (top-left)</label><input type="text" value="${esc(tpl.logoText||'')}" oninput="tpl.logoText=this.value;markDirty()">
+      <label>CARD DESCRIPTION</label><input type="text" value="${esc(tpl.description||'')}" oninput="tpl.description=this.value;markDirty()">
+    </div>`;
+    return;
+  }
+  if(sel.type==='colors'){
+    P.innerHTML=`<div class="guide">Card colors. Background carries the brand; label color is the small caption text.</div>
+    <div class="ed"><h3>COLORS</h3>
+      ${colorEd('Background','bg')}${colorEd('Text','fg')}${colorEd('Labels','label')}
+    </div>`;
+    return;
+  }
+  if(sel.type==='barcode'){
+    const b=tpl.barcode||(tpl.barcode={source:'barcode'});
+    P.innerHTML=`<div class="guide">The QR is for <b>other people's cameras</b> — it opens a link. Choose where it points.</div>
+    <div class="ed"><h3>QR / LINK</h3>
+      <label>POINTS TO</label>
+      <select onchange="tpl.barcode.source=this.value;markDirty();renderPanel()">
+        <option value="barcode"${b.source==='barcode'?' selected':''}>Each card's own link (set at creation)</option>
+        <option value="photoUrl"${b.source==='photoUrl'?' selected':''}>Each card's photo</option>
+        <option value="fixed"${b.source==='fixed'?' selected':''}>One fixed link for all cards</option>
+      </select>
+      ${b.source==='fixed'?`<label>FIXED LINK</label><input type="text" value="${esc(b.fixed||'')}" oninput="tpl.barcode.fixed=this.value;markDirty()">`:''}
+      <label>CAPTION UNDER QR</label><input type="text" value="${esc(b.altText||'')}" oninput="tpl.barcode.altText=this.value;markDirty()">
+    </div>`;
+    return;
+  }
+  // field editor
+  const f=tpl.fields[sel.section][sel.idx];
+  P.innerHTML=`<div class="guide">Editing a <b>${sel.section}</b> field. The label is the small caption; the default shows until a card sets its own value via the API (key: <b>${esc(f.key)}</b>).</div>
+  <div class="ed"><h3>FIELD</h3>
+    <div class="rowline">
+      <div><label>LABEL (shown on card)</label><input type="text" value="${esc(f.label||'')}" oninput="tpl.fields['${sel.section}'][${sel.idx}].label=this.value;markDirty()"></div>
+      <div><label>KEY (for the API)</label><input type="text" value="${esc(f.key)}" oninput="tpl.fields['${sel.section}'][${sel.idx}].key=this.value.replace(/\\W/g,'');markDirty()"></div>
+    </div>
+    ${f.value!=null
+      ?`<label>FIXED TEXT ({barcode}/{photoUrl} allowed)</label><input type="text" value="${esc(f.value)}" oninput="tpl.fields['${sel.section}'][${sel.idx}].value=this.value;markDirty()">`
+      :`<label>DEFAULT VALUE</label><input type="text" value="${esc(tpl.defaults[f.key]??'')}" oninput="tpl.defaults['${esc(f.key)}']=this.value;markDirty()">`}
+    <label>NOTIFICATION FORMAT (optional — %@ = new value; fires when this field changes)</label>
+    <input type="text" value="${esc(f.changeMessage||'')}" oninput="setCM('${sel.section}',${sel.idx},this.value)" placeholder="e.g. Due date: %@">
+    <div class="mini-note">Tip: keep ONE field with plain <b>%@</b> as your message channel${f.key===tpl.messageField?' — this is it (messageField)':''}.</div>
+    <button class="btn danger" onclick="removeField('${sel.section}',${sel.idx})">🗑 Remove field</button>
+  </div>`;
+}
+function setCM(section,idx,value){
+  const f=tpl.fields[section][idx];
+  if(value)f.changeMessage=value;else delete f.changeMessage;
+  markDirty();
+}
+function colorEd(name,key){
+  return `<div class="colorrow"><input type="color" value="${rgb2hex(tpl.colors[key])}" oninput="tpl.colors['${key}']=hex2rgb(this.value);markDirty()"><span>${name} · ${esc(tpl.colors[key])}</span></div>`;
+}
+function rgb2hex(rgb){const m=String(rgb).match(/(\d+)\s*,\s*(\d+)\s*,\s*(\d+)/);if(!m)return'#a4133c';return'#'+[m[1],m[2],m[3]].map(n=>Number(n).toString(16).padStart(2,'0')).join('');}
+function hex2rgb(hex){const n=parseInt(hex.slice(1),16);return`rgb(${(n>>16)&255}, ${(n>>8)&255}, ${n&255})`;}
+
+/* ── field add/remove/changeMessage ── */
+function addField(section){
+  const key=prompt('New field key (letters/numbers, e.g. points):');
+  if(!key)return;
+  const clean=key.replace(/\W/g,'');
+  tpl.fields[section]=tpl.fields[section]||[];
+  tpl.fields[section].push({key:clean,label:clean.toUpperCase()});
+  if(tpl.defaults[clean]==null)tpl.defaults[clean]='';
+  markDirty();pick('field',section,tpl.fields[section].length-1);
+}
+function removeField(section,idx){
+  tpl.fields[section].splice(idx,1);
+  sel=null;markDirty();renderPanel();
+}
+</script>
+</body>
+</html>
