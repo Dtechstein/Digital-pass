@@ -30,7 +30,7 @@
  */
 
 import { buildPkpass } from './pkpass.js';
-import { buildPassJson, DEFAULT_FIELDS } from './testpass.js';
+import { buildPassJson, DEFAULT_FIELDS, resolveTemplate, mergeTemplate } from './template.js';
 import { upsertObject, saveUrl } from './google.js';
 import {
   brandFromBearer, sha256Hex, randomKey, logEvent, notifyAllPlatforms, runScheduler,
@@ -98,7 +98,8 @@ async function route(request, env) {
       const serial = crypto.randomUUID();
       const authToken = crypto.randomUUID().replace(/-/g, '');
       const now = Math.floor(Date.now() / 1000);
-      const fields = { ...DEFAULT_FIELDS, ...(body.fields || {}) };
+      const template = await resolveTemplate(env, { brand_id: brand.id });
+      const fields = { ...template.defaults, ...(body.fields || {}) };
       if (body.photoUrl || body.imageUrl) fields.photoUrl = body.photoUrl || body.imageUrl;
       if (body.barcode) fields.barcode = body.barcode; // guest's photo page URL (QR + links)
       await env.DB.prepare(
@@ -129,7 +130,8 @@ async function route(request, env) {
     let googleSaveUrl = null;
     if (env.GOOGLE_SA_KEY_JSON) {
       try {
-        await upsertObject(env, pass.serial, JSON.parse(pass.fields_json));
+        const tpl = await resolveTemplate(env, { brand_id: brand.id });
+        await upsertObject(env, pass.serial, JSON.parse(pass.fields_json), tpl, brand.id);
         googleSaveUrl = await saveUrl(env, pass.serial);
       } catch (e) {
         console.log('google_create_failed', String(e && e.message));
@@ -162,12 +164,34 @@ async function route(request, env) {
     }
   }
 
+  // ── Admin: brand template read/write (the engine's editing surface) ──
+  if (seg[0] === 'v1' && seg[1] === 'brands' && seg[3] === 'template') {
+    if (!adminOk(request, env)) return json({ error: 'unauthorized' }, 401);
+    const brand = await env.DB.prepare('SELECT * FROM brands WHERE id=?').bind(seg[2]).first();
+    if (!brand) return json({ error: 'not_found' }, 404);
+    let stored = {};
+    try { stored = JSON.parse(brand.template_json || '{}'); } catch {}
+
+    if (m === 'GET') {
+      return json({ id: brand.id, template: stored, effective: mergeTemplate({ orgName: brand.name, ...stored }) });
+    }
+    if (m === 'PUT') {
+      const body = await request.json().catch(() => null);
+      if (!body || typeof body !== 'object' || Array.isArray(body)) {
+        return json({ error: 'bad_request', hint: 'PUT the template object' }, 400);
+      }
+      await env.DB.prepare('UPDATE brands SET template_json=? WHERE id=?')
+        .bind(JSON.stringify(body), brand.id).run();
+      return json({ ok: true, id: brand.id, effective: mergeTemplate({ orgName: brand.name, ...body }) });
+    }
+  }
+
   // ── Public: re-download existing card (token-gated) ──────────
   if (seg[0] === 'v1' && seg[1] === 'passes' && seg[3] === 'apple.pkpass' && m === 'GET') {
     const pass = await getPass(env, seg[2]);
     if (!pass) return new Response(null, { status: 404 });
     if (url.searchParams.get('t') !== pass.auth_token) return new Response(null, { status: 401 });
-    return servePkpass(env, { serial: pass.serial, authToken: pass.auth_token, fields: JSON.parse(pass.fields_json) }, pass.updated_at);
+    return servePkpass(env, { serial: pass.serial, authToken: pass.auth_token, fields: JSON.parse(pass.fields_json) }, pass.updated_at, await resolveTemplate(env, pass));
   }
 
   // ── Admin: apple/google links + log (precede Apple 4-seg GET) ──
@@ -183,7 +207,8 @@ async function route(request, env) {
     if (seg[3] === 'google-link') {
       if (!env.GOOGLE_SA_KEY_JSON) return json({ error: 'google_not_configured' }, 500);
       try {
-        await upsertObject(env, pass.serial, JSON.parse(pass.fields_json));
+        const tpl = await resolveTemplate(env, pass);
+        await upsertObject(env, pass.serial, JSON.parse(pass.fields_json), tpl, pass.brand_id);
         return json({ saveUrl: await saveUrl(env, pass.serial) });
       } catch (err) {
         return json({ error: 'google_failed', message: String(err && err.message) }, 500);
@@ -254,7 +279,7 @@ async function route(request, env) {
     if (ims && Math.floor(Date.parse(ims) / 1000) >= pass.updated_at) {
       return new Response(null, { status: 304 });
     }
-    return servePkpass(env, { serial: pass.serial, authToken: pass.auth_token, fields: JSON.parse(pass.fields_json) }, pass.updated_at);
+    return servePkpass(env, { serial: pass.serial, authToken: pass.auth_token, fields: JSON.parse(pass.fields_json) }, pass.updated_at, await resolveTemplate(env, pass));
   }
 
   // ── Apple web service: log ───────────────────────────────────
@@ -369,7 +394,8 @@ function adminOk(request, env) {
   return env.ADMIN_KEY && request.headers.get('X-Admin-Key') === env.ADMIN_KEY;
 }
 
-async function servePkpass(env, passData, updatedAt) {
+async function servePkpass(env, passData, updatedAt, template) {
+  passData = { ...passData, template };
   // generic style: no strip files in the bundle; photo = square thumbnail
   const images = Object.fromEntries(
     Object.entries(PASS_IMAGES).filter(([name]) => !name.startsWith('strip'))

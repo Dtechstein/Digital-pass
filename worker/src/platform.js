@@ -3,7 +3,8 @@
  */
 
 import { pushPassUpdate } from './apns.js';
-import { upsertObject, objectExists, addMessage, saveUrl } from './google.js';
+import { upsertObject, objectExists, addMessage } from './google.js';
+import { resolveTemplate } from './template.js';
 
 const encoder = new TextEncoder();
 
@@ -59,10 +60,11 @@ export async function notifyAllPlatforms(env, pass, fields, changeMessage) {
   if (env.GOOGLE_SA_KEY_JSON) {
     try {
       if (await objectExists(env, pass.serial)) {
-        await upsertObject(env, pass.serial, fields);
+        const template = await resolveTemplate(env, pass);
+        await upsertObject(env, pass.serial, fields, template, pass.brand_id);
         google = 'updated';
         if (changeMessage) {
-          const msg = await addMessage(env, pass.serial, changeMessage);
+          const msg = await addMessage(env, pass.serial, changeMessage, template);
           google = msg.ok ? 'updated+notified' : `updated (notify ${msg.status})`;
         }
       } else {

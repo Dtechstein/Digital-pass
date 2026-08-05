@@ -9,6 +9,7 @@
  */
 
 import { googleHeroUrl } from './images.js';
+import { DEFAULT_TEMPLATE, googleView } from './template.js';
 
 const WALLET_API = 'https://walletobjects.googleapis.com/walletobjects/v1';
 const SCOPE = 'https://www.googleapis.com/auth/wallet_object.issuer';
@@ -87,19 +88,18 @@ async function api(env, method, path, body) {
 }
 
 /* ── class (one per brand) ── */
-function classId(env) { return `${env.GOOGLE_ISSUER_ID}.kindness_love`; }
-
-function classPayload(env) {
-  return {
-    id: classId(env),
-    // Generic class is intentionally minimal; branding lives on the object.
-  };
+function classId(env, brandId) {
+  // brand 'love' (and legacy cards) keep the original class so existing
+  // Android cards aren't orphaned; other brands get their own.
+  if (!brandId || brandId === 'love') return `${env.GOOGLE_ISSUER_ID}.kindness_love`;
+  return `${env.GOOGLE_ISSUER_ID}.${brandId}`;
 }
 
-export async function ensureClass(env) {
-  const r = await api(env, 'GET', `/genericClass/${classId(env)}`);
+export async function ensureClass(env, brandId) {
+  const id = classId(env, brandId);
+  const r = await api(env, 'GET', `/genericClass/${id}`);
   if (r.status === 200) return { ok: true, existed: true };
-  const c = await api(env, 'POST', '/genericClass', classPayload(env));
+  const c = await api(env, 'POST', '/genericClass', { id });
   if (c.status === 200 || c.status === 409) return { ok: true, existed: c.status === 409 };
   throw new Error(`google_class_failed ${c.status}: ${c.text.slice(0, 300)}`);
 }
@@ -110,41 +110,34 @@ function objectId(env, serial) {
   return `${env.GOOGLE_ISSUER_ID}.${serial}`;
 }
 
-function objectPayload(env, serial, f) {
+function objectPayload(env, serial, f, template, brandId) {
+  const t = template || DEFAULT_TEMPLATE;
+  const v = googleView(t, f);
   const hero = f.photoUrl ? { heroImage: { sourceUri: { uri: googleHeroUrl(f.photoUrl) } } } : {};
-  return {
+  const payload = {
     ...hero,
     id: objectId(env, serial),
-    classId: classId(env),
+    classId: classId(env, brandId),
     state: 'ACTIVE',
-    cardTitle: { defaultValue: { language: 'en-US', value: env.ORG_NAME || 'All About Love' } },
-    header: { defaultValue: { language: 'en-US', value: f.promise || 'I promised an act of kindness' } },
-    subheader: { defaultValue: { language: 'en-US', value: (f.guest || 'Guest') + (f.event ? ' · ' + f.event : '') } },
-    hexBackgroundColor: '#a4133c',
-    textModulesData: [
-      { id: 'due', header: 'DUE', body: f.due || '' },
-      { id: 'acts', header: 'ACTS DONE', body: String(f.acts ?? '0') },
-      { id: 'movement', header: 'THE MOVEMENT', body: f.movement || '' },
-    ],
-    linksModuleData: {
-      uris: [{
-        id: 'album',
-        uri: f.barcode || f.photoUrl || 'https://allaboutlove.camera',
-        description: 'Your photo — view, share, download',
-      }],
-    },
-    barcode: {
-      type: 'QR_CODE',
-      value: f.barcode || f.photoUrl || 'https://allaboutlove.camera/p/test',
-      alternateText: 'scan to open your photo',
-    },
+    cardTitle: { defaultValue: { language: 'en-US', value: v.cardTitle } },
+    header: { defaultValue: { language: 'en-US', value: v.header } },
+    hexBackgroundColor: v.hexBackgroundColor,
+    textModulesData: v.textModules,
   };
+  if (v.subheader) payload.subheader = { defaultValue: { language: 'en-US', value: v.subheader } };
+  if (v.barcode) {
+    payload.linksModuleData = {
+      uris: [{ id: 'album', uri: v.barcode, description: 'Your photo — view, share, download' }],
+    };
+    payload.barcode = { type: 'QR_CODE', value: v.barcode, alternateText: v.barcodeAlt };
+  }
+  return payload;
 }
 
 /** Create or update the object for a card. */
-export async function upsertObject(env, serial, fields) {
-  await ensureClass(env);
-  const payload = objectPayload(env, serial, fields);
+export async function upsertObject(env, serial, fields, template, brandId) {
+  await ensureClass(env, brandId);
+  const payload = objectPayload(env, serial, fields, template, brandId);
   const existing = await api(env, 'GET', `/genericObject/${objectId(env, serial)}`);
   if (existing.status === 200) {
     const r = await api(env, 'PUT', `/genericObject/${objectId(env, serial)}`, payload);
@@ -165,10 +158,10 @@ export async function objectExists(env, serial) {
 }
 
 /** Notification: message appears on the card; Android may surface a push. ≈3/day limit. */
-export async function addMessage(env, serial, message) {
+export async function addMessage(env, serial, message, template) {
   const r = await api(env, 'POST', `/genericObject/${objectId(env, serial)}/addMessage`, {
     message: {
-      header: env.ORG_NAME || 'All About Love',
+      header: (template && template.orgName) || env.ORG_NAME || 'All About Love',
       body: message,
       messageType: 'TEXT_AND_NOTIFY',
     },
