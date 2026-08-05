@@ -38,6 +38,7 @@ import {
 import { appleThumbnails } from './images.js';
 import { PASS_IMAGES } from './assets.gen.js';
 import { ADMIN_HTML, BUILDER_HTML } from './admin.gen.js';
+import { companionChat } from './companion.js';
 
 export default {
   async fetch(request, env) {
@@ -186,6 +187,24 @@ async function route(request, env) {
       await env.DB.prepare('UPDATE brands SET template_json=? WHERE id=?')
         .bind(JSON.stringify(body), brand.id).run();
       return json({ ok: true, id: brand.id, effective: mergeTemplate({ orgName: brand.name, ...body }) });
+    }
+  }
+
+  // ── Admin: the builder's AI brain (Claude) ───────────────────
+  if (p === '/v1/companion' && m === 'POST') {
+    if (!adminOk(request, env)) return json({ error: 'unauthorized' }, 401);
+    if (!env.ANTHROPIC_API_KEY) {
+      return json({ error: 'no_brain', hint: 'Run: npx wrangler secret put ANTHROPIC_API_KEY' }, 503);
+    }
+    const body = await request.json().catch(() => null);
+    if (!body || !body.message || !body.template) {
+      return json({ error: 'bad_request', hint: 'message and template are required' }, 400);
+    }
+    try {
+      return json(await companionChat(env, body));
+    } catch (err) {
+      console.log('companion_error', String(err && err.message));
+      return json({ error: 'companion_failed', message: String(err && err.message) }, 502);
     }
   }
 

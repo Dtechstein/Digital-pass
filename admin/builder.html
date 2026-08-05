@@ -97,6 +97,8 @@
   .msg{max-width:92%;font-size:12.5px;line-height:1.45;padding:8px 11px;border-radius:12px;}
   .msg.ai{align-self:flex-start;background:#faf8f3;border:1px solid var(--line);border-radius:4px 12px 12px 12px;}
   .msg.ai b{color:var(--crimson);}
+  .think{opacity:.55;animation:pulse 1.2s ease-in-out infinite;}
+  @keyframes pulse{0%,100%{opacity:.35}50%{opacity:.8}}
   .msg.user{align-self:flex-end;background:var(--ink);color:#fff;border-radius:12px 4px 12px 12px;}
   .chat-box{display:flex;gap:8px;padding:10px 14px 14px;}
   .chat-box input{flex:1;border:1px solid var(--line);border-radius:10px;padding:9px 12px;font-size:13px;font-family:inherit;}
@@ -411,7 +413,37 @@ function aiSay(html){const s=document.getElementById('chatStream');const d=docum
 function userSay(t){const s=document.getElementById('chatStream');const d=document.createElement('div');d.className='msg user';d.textContent=t;s.appendChild(d);s.scrollTop=s.scrollHeight;}
 function sendChat(){
   const inp=document.getElementById('chatInput');const v=inp.value.trim();if(!v)return;
-  userSay(v);inp.value='';handleChat(v.toLowerCase(),v);
+  userSay(v);inp.value='';
+  const low=v.toLowerCase();
+  // instant local commands — no API round-trip needed
+  if(low==='flip'||low==='publish'){handleChat(low,v);return;}
+  askClaude(v);
+}
+let chatHist=[],brainDown=false;
+function aiThinking(){
+  const s=document.getElementById('chatStream');const d=document.createElement('div');
+  d.className='msg ai';d.innerHTML='<span class="think">thinking…</span>';
+  s.appendChild(d);s.scrollTop=s.scrollHeight;return d;
+}
+async function askClaude(raw){
+  if(!tpl){aiSay('Pick a brand first.');return;}
+  if(brainDown){handleChat(raw.toLowerCase(),raw);return;}
+  const think=aiThinking();
+  try{
+    const res=await fetch('/v1/companion',{method:'POST',headers:{'X-Admin-Key':KEY,'Content-Type':'application/json'},
+      body:JSON.stringify({message:raw,template:tpl,history:chatHist.slice(-10)})});
+    const data=await res.json();
+    think.remove();
+    if(res.status===503){brainDown=true;aiSay('My AI brain isn\'t connected yet (no API key on the server) — quick-commands only for now.');handleChat(raw.toLowerCase(),raw);return;}
+    if(!res.ok||!data.reply)throw new Error(data.message||data.error||'failed');
+    chatHist.push({role:'user',content:raw},{role:'assistant',content:data.reply});
+    if(data.template){tpl=data.template;markDirty();if(sel)renderPanel();}
+    aiSay(esc(data.reply).replace(/\n/g,'<br>'));
+  }catch(e){
+    think.remove();
+    aiSay('Hmm, I couldn\'t reach my brain just now — trying quick-commands instead.');
+    handleChat(raw.toLowerCase(),raw);
+  }
 }
 function handleChat(low,raw){
   if(!tpl){aiSay('Pick a brand first.');return;}
@@ -449,9 +481,9 @@ function handleChat(low,raw){
   m=raw.match(/(?:call|name) (?:it|the card) (.+)/i);
   if(m){tpl.orgName=m[1].trim();tpl.logoText=m[1].trim();markDirty();aiSay(`It's now <b>${esc(m[1].trim())}</b>.`);return;}
   if(low.includes('publish')){publish();return;}
-  aiSay(`I understand: <b>colors</b> (“make it ocean blue”, “sunset”…), <b>add field points</b>, <b>rename guest to member</b>, <b>call it Binah</b>, <b>flip</b>, <b>publish</b>. For everything else — clicking the card is fastest. (My full AI brain arrives in a later step; today I'm quick-commands.)`);
+  aiSay(`I understand: <b>colors</b> (“make it ocean blue”, “sunset”…), <b>add field points</b>, <b>rename guest to member</b>, <b>call it Binah</b>, <b>flip</b>, <b>publish</b>.`);
 }
-setTimeout(()=>aiSay('Hi David — tell me things like <b>“make it ocean blue”</b>, <b>“add field points”</b>, or click the card directly. <b>Publish</b> makes it real for every card.'),600);
+setTimeout(()=>aiSay('Hi — describe anything: <b>“make it feel like a wedding invitation”</b>, <b>“add a spot for their table number”</b>, <b>“the text is hard to read”</b>. Or click the card directly. <b>Publish</b> makes it real for every card.'),600);
 
 /* ── field add/remove/changeMessage ── */
 function startAdd(section){sel={type:'add',section};renderPanel();}
