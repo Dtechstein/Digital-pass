@@ -8,13 +8,18 @@ compatibility_date = "2026-07-01"
 #   APPLE_WWDR_PEM        – Apple WWDR G4 intermediate certificate (PEM)
 #
 # ── Vars ──
+# ── Step 2 secrets ──
+#   APNS_KEY_PEM          – APNs auth key (.p8 file contents)
+#   ADMIN_KEY             – your password for PATCH /v1/passes
+#
 [vars]
 APPLE_TEAM_ID = "67K25P7L5H"                              # 10-char Apple team ID
 APPLE_PASS_TYPE_ID = "pass.com.allaboutlove.kindness"     # must match the certificate
 ORG_NAME = "All About Love"
+BASE_URL = "https://digital-pass.small-bread-a578.workers.dev"
+APNS_KEY_ID = "REPLACE_KEY_ID"                            # 10-char APNs key ID
 
-# D1 binding arrives in build-order step 4 (multi-brand persistence)
-# [[d1_databases]]
-# binding = "DB"
-# database_name = "digital-pass"
-# database_id = ""
+[[d1_databases]]
+binding = "DB"
+database_name = "digital-pass"
+database_id = "REPLACE_DATABASE_ID"

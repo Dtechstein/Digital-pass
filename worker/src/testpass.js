@@ -1,48 +1,58 @@
 /**
- * testpass.js — the static crimson Kindness test card (build-order step 1).
- * No web service, no updates yet: prove signing + "Add to Wallet" first.
+ * testpass.js — Kindness Card pass definition (step 2: now updatable).
+ *
+ * New vs step 1:
+ * - webServiceURL + authenticationToken → devices register for updates
+ * - a 'latest' back field whose changeMessage "%@" carries lock-screen
+ *   notifications: PATCH sets its value, Apple shows the new value verbatim.
  */
 
-export function makeTestPassJson(env, serialNumber) {
+export const DEFAULT_FIELDS = {
+  due: 'Aug 11',
+  promise: 'I promised an act of kindness',
+  guest: 'Sarah',
+  event: 'Test Event',
+  acts: '0',
+  movement: 'Act #247,801 of one million',
+  latest: 'Welcome to the movement 💗',
+};
+
+export function buildPassJson(env, { serial, authToken, fields }) {
+  const f = { ...DEFAULT_FIELDS, ...fields };
   return {
     formatVersion: 1,
     passTypeIdentifier: env.APPLE_PASS_TYPE_ID,
     teamIdentifier: env.APPLE_TEAM_ID,
     organizationName: env.ORG_NAME || 'All About Love',
-    serialNumber,
+    serialNumber: serial,
     description: 'Kindness Card (test)',
     logoText: 'All About Love',
+
+    webServiceURL: env.BASE_URL,
+    authenticationToken: authToken,
 
     backgroundColor: 'rgb(164, 19, 60)',
     foregroundColor: 'rgb(255, 255, 255)',
     labelColor: 'rgb(255, 214, 224)',
 
     generic: {
-      headerFields: [
-        { key: 'due', label: 'DUE', value: 'Aug 11' },
-      ],
-      primaryFields: [
-        { key: 'promise', label: 'MY PROMISE', value: 'I promised an act of kindness' },
-      ],
+      headerFields: [{ key: 'due', label: 'DUE', value: f.due, changeMessage: 'Due date: %@' }],
+      primaryFields: [{ key: 'promise', label: 'MY PROMISE', value: f.promise }],
       secondaryFields: [
-        { key: 'guest', label: 'GUEST', value: 'Sarah' },
-        { key: 'event', label: 'EVENT', value: 'Test Event' },
+        { key: 'guest', label: 'GUEST', value: f.guest },
+        { key: 'event', label: 'EVENT', value: f.event },
       ],
       auxiliaryFields: [
-        { key: 'acts', label: 'ACTS DONE', value: '0' },
-        { key: 'movement', label: 'THE MOVEMENT', value: 'Act #247,801 of one million' },
+        { key: 'acts', label: 'ACTS DONE', value: f.acts },
+        { key: 'movement', label: 'THE MOVEMENT', value: f.movement },
       ],
       backFields: [
-        {
-          key: 'album',
-          label: 'YOUR PHOTOS',
-          value: 'https://allaboutlove.camera',
-        },
+        { key: 'latest', label: 'LATEST', value: f.latest, changeMessage: '%@' },
+        { key: 'album', label: 'YOUR PHOTOS', value: 'https://allaboutlove.camera' },
         {
           key: 'about',
           label: 'ABOUT',
-          value:
-            'One photo. One promise. One million acts of kindness. This is a static test card — updates and notifications arrive in step 2.',
+          value: 'One photo. One promise. One million acts of kindness.',
         },
       ],
     },

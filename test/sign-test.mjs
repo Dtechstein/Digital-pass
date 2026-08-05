@@ -19,7 +19,7 @@ import { join } from 'node:path';
 import { createHash } from 'node:crypto';
 
 import { buildPkpass } from '../worker/src/pkpass.js';
-import { makeTestPassJson } from '../worker/src/testpass.js';
+import { buildPassJson, DEFAULT_FIELDS } from '../worker/src/testpass.js';
 import { PASS_IMAGES } from '../worker/src/assets.gen.js';
 
 // ── 1. throwaway cert ──────────────────────────────────────────
@@ -46,8 +46,17 @@ const creds = {
 
 // ── 2. build the pkpass ────────────────────────────────────────
 console.log('• building .pkpass…');
-const env = { APPLE_PASS_TYPE_ID: 'pass.test.digitalpass', APPLE_TEAM_ID: 'TESTTEAM01', ORG_NAME: 'Test' };
-const pkpass = buildPkpass(makeTestPassJson(env, 'serial-test-1'), PASS_IMAGES, creds);
+const env = {
+  APPLE_PASS_TYPE_ID: 'pass.test.digitalpass',
+  APPLE_TEAM_ID: 'TESTTEAM01',
+  ORG_NAME: 'Test',
+  BASE_URL: 'https://example.test',
+};
+const pkpass = buildPkpass(
+  buildPassJson(env, { serial: 'serial-test-1', authToken: 'a'.repeat(32), fields: DEFAULT_FIELDS }),
+  PASS_IMAGES,
+  creds
+);
 console.log(`  ${pkpass.length} bytes`);
 
 // ── 3. verify zip + manifest ───────────────────────────────────
