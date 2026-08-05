@@ -35,7 +35,7 @@ import { upsertObject, saveUrl } from './google.js';
 import {
   brandFromBearer, sha256Hex, randomKey, logEvent, notifyAllPlatforms, runScheduler,
 } from './platform.js';
-import { appleStrip } from './images.js';
+import { appleThumbnails } from './images.js';
 import { PASS_IMAGES } from './assets.gen.js';
 import { ADMIN_HTML } from './admin.gen.js';
 
@@ -99,6 +99,8 @@ async function route(request, env) {
       const authToken = crypto.randomUUID().replace(/-/g, '');
       const now = Math.floor(Date.now() / 1000);
       const fields = { ...DEFAULT_FIELDS, ...(body.fields || {}) };
+      if (body.photoUrl || body.imageUrl) fields.photoUrl = body.photoUrl || body.imageUrl;
+      if (body.barcode) fields.barcode = body.barcode; // guest's photo page URL (QR + links)
       await env.DB.prepare(
         `INSERT INTO passes (serial, auth_token, fields_json, created_at, updated_at, brand_id, external_id)
          VALUES (?,?,?,?,?,?,?)`
@@ -368,10 +370,12 @@ function adminOk(request, env) {
 }
 
 async function servePkpass(env, passData, updatedAt) {
-  let images = PASS_IMAGES; // includes the default crimson strip
+  // generic style: no strip files in the bundle; photo = square thumbnail
+  const images = Object.fromEntries(
+    Object.entries(PASS_IMAGES).filter(([name]) => !name.startsWith('strip'))
+  );
   if (passData.fields && passData.fields.photoUrl) {
-    const photo = await appleStrip(passData.fields.photoUrl);
-    images = { ...PASS_IMAGES, ...photo }; // photo strip replaces default when fetch succeeds
+    Object.assign(images, await appleThumbnails(passData.fields.photoUrl));
   }
   const pkpass = buildPkpass(buildPassJson(env, passData), images, {
     certPem: env.APPLE_PASS_CERT_PEM,

@@ -127,12 +127,16 @@ function objectPayload(env, serial, f) {
       { id: 'movement', header: 'THE MOVEMENT', body: f.movement || '' },
     ],
     linksModuleData: {
-      uris: [{ id: 'album', uri: 'https://allaboutlove.camera', description: 'View your photos' }],
+      uris: [{
+        id: 'album',
+        uri: f.barcode || f.photoUrl || 'https://allaboutlove.camera',
+        description: 'Your photo — view, share, download',
+      }],
     },
     barcode: {
       type: 'QR_CODE',
-      value: 'https://allaboutlove.camera/p/test',
-      alternateText: 'allaboutlove.camera',
+      value: f.barcode || f.photoUrl || 'https://allaboutlove.camera/p/test',
+      alternateText: 'scan to open your photo',
     },
   };
 }

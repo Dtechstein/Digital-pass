@@ -35,7 +35,7 @@ export function buildPassJson(env, { serial, authToken, fields }) {
     foregroundColor: 'rgb(255, 255, 255)',
     labelColor: 'rgb(255, 214, 224)',
 
-    storeCard: {
+    generic: {
       headerFields: [{ key: 'due', label: 'DUE', value: f.due, changeMessage: 'Due date: %@' }],
       primaryFields: [{ key: 'promise', label: 'MY PROMISE', value: f.promise }],
       secondaryFields: [
@@ -48,7 +48,11 @@ export function buildPassJson(env, { serial, authToken, fields }) {
       ],
       backFields: [
         { key: 'latest', label: 'LATEST', value: f.latest, changeMessage: '%@' },
-        { key: 'album', label: 'YOUR PHOTOS', value: 'https://allaboutlove.camera' },
+        {
+          key: 'album',
+          label: 'YOUR PHOTO — VIEW · SHARE · DOWNLOAD',
+          value: f.barcode || f.photoUrl || 'https://allaboutlove.camera',
+        },
         {
           key: 'about',
           label: 'ABOUT',
@@ -60,9 +64,9 @@ export function buildPassJson(env, { serial, authToken, fields }) {
     barcodes: [
       {
         format: 'PKBarcodeFormatQR',
-        message: 'https://allaboutlove.camera/p/test',
+        message: f.barcode || f.photoUrl || 'https://allaboutlove.camera/p/test',
         messageEncoding: 'iso-8859-1',
-        altText: 'allaboutlove.camera/p/test',
+        altText: 'scan to open your photo',
       },
     ],
   };

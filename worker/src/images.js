@@ -19,17 +19,18 @@ export function googleHeroUrl(photoUrl) {
 }
 
 /**
- * Fetch Apple full-width strip images for a photo (storeCard style).
- * @returns {Promise<Record<string, Uint8Array>>} {} on any failure — card falls back to brand strip.
+ * Fetch Apple square thumbnails for a photo (generic style — David's pick:
+ * the photo is a memento + doorway, not wallpaper; QR/back link open it).
+ * @returns {Promise<Record<string, Uint8Array>>} {} on any failure — card ships without photo.
  */
-export async function appleStrip(photoUrl) {
+export async function appleThumbnails(photoUrl) {
   try {
     const [x1, x2] = await Promise.all([
-      fetchPng(weserv(photoUrl, 'w=375&h=123&fit=cover&output=png&l=9')),
-      fetchPng(weserv(photoUrl, 'w=750&h=246&fit=cover&output=png&l=9')),
+      fetchPng(weserv(photoUrl, 'w=90&h=90&fit=cover&output=png&l=9')),
+      fetchPng(weserv(photoUrl, 'w=180&h=180&fit=cover&output=png&l=9')),
     ]);
     if (!x1 || !x2) return {};
-    return { 'strip.png': x1, 'strip@2x.png': x2 };
+    return { 'thumbnail.png': x1, 'thumbnail@2x.png': x2 };
   } catch {
     return {};
   }
