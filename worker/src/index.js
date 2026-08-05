@@ -59,7 +59,7 @@ async function route(request, env) {
   if (seg[0] === 'v1' && seg[1] === 'devices' && seg[3] === 'registrations') {
     const deviceId = seg[2];
     const passTypeId = seg[4];
-    const serial = seg[6];
+    const serial = seg[5];
     if (passTypeId !== env.APPLE_PASS_TYPE_ID) return new Response(null, { status: 404 });
 
     if ((m === 'POST' || m === 'DELETE') && serial) {
