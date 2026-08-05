@@ -1,27 +1,40 @@
 /**
- * Digital Pass — Cloudflare Worker entry (step 2: updates + notifications).
+ * Digital Pass — Cloudflare Worker entry (step 4: the platform).
  *
- * Public/test:
- *   GET  /health
- *   GET  /v1/test-pass                      mint a new updatable Kindness test card
+ * Brand API (Authorization: Bearer <brand key>):
+ *   POST  /v1/passes               create card (idempotent by externalId) → both wallet links
  *
- * Admin (X-Admin-Key header):
- *   GET   /v1/passes                        list passes + registration counts
- *   GET   /v1/passes/{serial}               current state
- *   PATCH /v1/passes/{serial}               {fields?, changeMessage?} → APNs push
+ * Admin (X-Admin-Key):
+ *   POST  /v1/brands               create brand → returns API key ONCE
+ *   GET   /v1/brands               list brands
+ *   GET   /v1/passes               list cards (+names, registrations, archived)
+ *   GET   /v1/passes/{serial}      current state
+ *   GET   /v1/passes/{serial}/log  event timeline
+ *   GET   /v1/passes/{serial}/apple-link | /google-link
+ *   PATCH /v1/passes/{serial}      fields/changeMessage → notify BOTH platforms
+ *   POST  /v1/passes/{serial}?action=archive|unarchive
+ *   DELETE /v1/passes/{serial}     privacy purge (X-Confirm-Purge: serial)
  *
- * Apple PassKit web service (devices call these; ApplePass auth):
- *   POST   /v1/devices/{did}/registrations/{ptid}/{serial}   register (body: pushToken)
- *   DELETE /v1/devices/{did}/registrations/{ptid}/{serial}   unregister
- *   GET    /v1/devices/{did}/registrations/{ptid}[?passesUpdatedSince=ts]
- *   GET    /v1/passes/{ptid}/{serial}                        latest .pkpass
- *   POST   /v1/log
+ * Public:
+ *   GET /admin                     admin UI     GET /health
+ *   GET /v1/test-pass              mint legacy test card
+ *   GET /v1/passes/{serial}/apple.pkpass?t=token   re-download existing card
+ *
+ * Apple PassKit web service (devices; ApplePass auth):
+ *   POST/DELETE /v1/devices/{did}/registrations/{ptid}/{serial}
+ *   GET  /v1/devices/{did}/registrations/{ptid}
+ *   GET  /v1/passes/{ptid}/{serial}
+ *   POST /v1/log
+ *
+ * Cron: fires due scheduled_messages (see platform.js).
  */
 
 import { buildPkpass } from './pkpass.js';
 import { buildPassJson, DEFAULT_FIELDS } from './testpass.js';
-import { pushPassUpdate } from './apns.js';
-import { upsertObject, objectExists, addMessage, saveUrl } from './google.js';
+import { upsertObject, saveUrl } from './google.js';
+import {
+  brandFromBearer, sha256Hex, randomKey, logEvent, notifyAllPlatforms, runScheduler,
+} from './platform.js';
 import { PASS_IMAGES } from './assets.gen.js';
 import { ADMIN_HTML } from './admin.gen.js';
 
@@ -34,32 +47,153 @@ export default {
       return json({ error: 'internal', message: String(err && err.message) }, 500);
     }
   },
+  async scheduled(event, env) {
+    const n = await runScheduler(env);
+    if (n) console.log('scheduler_tick', n, 'sent');
+  },
 };
 
 async function route(request, env) {
   const url = new URL(request.url);
   const p = url.pathname.replace(/\/+$/, '');
-  const seg = p.split('/').filter(Boolean); // e.g. ['v1','passes','abc']
+  const seg = p.split('/').filter(Boolean);
   const m = request.method;
 
-  if (p === '/health') return json({ ok: true, service: 'digital-pass', step: 2, db: !!env.DB });
+  if (p === '/health') return json({ ok: true, service: 'digital-pass', step: 4, db: !!env.DB });
 
-  // ── admin UI (ships inside the Worker) ───────────────────────
+  // ── admin UI ─────────────────────────────────────────────────
   if ((p === '/admin' || p === '') && m === 'GET') {
     return new Response(ADMIN_HTML, { headers: { 'Content-Type': 'text/html; charset=utf-8' } });
   }
 
-  // ── mint a test pass ─────────────────────────────────────────
+  // ── mint a legacy test pass ──────────────────────────────────
   if (p === '/v1/test-pass' && m === 'GET') {
     const err = readiness(env);
     if (err) return err;
     const serial = crypto.randomUUID();
-    const authToken = crypto.randomUUID().replace(/-/g, ''); // 32 chars
+    const authToken = crypto.randomUUID().replace(/-/g, '');
     const now = Math.floor(Date.now() / 1000);
     await env.DB.prepare(
       'INSERT INTO passes (serial, auth_token, fields_json, created_at, updated_at) VALUES (?,?,?,?,?)'
     ).bind(serial, authToken, JSON.stringify(DEFAULT_FIELDS), now, now).run();
+    await logEvent(env, serial, 'created', { message: 'test card minted' });
     return servePkpass(env, { serial, authToken, fields: DEFAULT_FIELDS }, now);
+  }
+
+  // ── Brand API: create a card ─────────────────────────────────
+  if (p === '/v1/passes' && m === 'POST') {
+    const brand = await brandFromBearer(request, env);
+    if (!brand) return json({ error: 'unauthorized', hint: 'Authorization: Bearer <brand API key>' }, 401);
+    const body = await request.json().catch(() => null);
+    if (!body || !body.externalId) return json({ error: 'bad_request', hint: 'externalId is required' }, 400);
+
+    // idempotency: same (brand, externalId) → same card
+    let pass = await env.DB.prepare(
+      'SELECT * FROM passes WHERE brand_id=? AND external_id=?'
+    ).bind(brand.id, body.externalId).first();
+    let created = false;
+
+    if (!pass) {
+      const serial = crypto.randomUUID();
+      const authToken = crypto.randomUUID().replace(/-/g, '');
+      const now = Math.floor(Date.now() / 1000);
+      const fields = { ...DEFAULT_FIELDS, ...(body.fields || {}) };
+      await env.DB.prepare(
+        `INSERT INTO passes (serial, auth_token, fields_json, created_at, updated_at, brand_id, external_id)
+         VALUES (?,?,?,?,?,?,?)`
+      ).bind(serial, authToken, JSON.stringify(fields), now, now, brand.id, body.externalId).run();
+      pass = { serial, auth_token: authToken, fields_json: JSON.stringify(fields) };
+      created = true;
+
+      // schedule: [{inMinutes | at (unix seconds or ISO), message}]
+      for (const s of body.schedule || []) {
+        let sendAt = null;
+        if (s.inMinutes != null) sendAt = now + Math.round(Number(s.inMinutes) * 60);
+        else if (typeof s.at === 'number') sendAt = Math.floor(s.at);
+        else if (typeof s.at === 'string') sendAt = Math.floor(Date.parse(s.at) / 1000);
+        if (sendAt && s.message) {
+          await env.DB.prepare(
+            'INSERT INTO scheduled_messages (serial, send_at, message) VALUES (?,?,?)'
+          ).bind(serial, sendAt, String(s.message)).run();
+        }
+      }
+      await logEvent(env, serial, 'created', {
+        message: `via API by brand ${brand.id}` + ((body.schedule || []).length ? ` (+${body.schedule.length} scheduled)` : ''),
+      });
+    }
+
+    // Google object (best effort)
+    let googleSaveUrl = null;
+    if (env.GOOGLE_SA_KEY_JSON) {
+      try {
+        await upsertObject(env, pass.serial, JSON.parse(pass.fields_json));
+        googleSaveUrl = await saveUrl(env, pass.serial);
+      } catch (e) {
+        console.log('google_create_failed', String(e && e.message));
+      }
+    }
+
+    return json({
+      serial: pass.serial,
+      created,
+      appleUrl: `${env.BASE_URL}/v1/passes/${pass.serial}/apple.pkpass?t=${pass.auth_token}`,
+      googleSaveUrl,
+    }, created ? 201 : 200);
+  }
+
+  // ── Admin: brands ────────────────────────────────────────────
+  if (p === '/v1/brands') {
+    if (!adminOk(request, env)) return json({ error: 'unauthorized' }, 401);
+    if (m === 'POST') {
+      const body = await request.json().catch(() => null);
+      if (!body || !body.id || !body.name) return json({ error: 'bad_request', hint: 'need {id, name}' }, 400);
+      const key = randomKey(body.id);
+      await env.DB.prepare(
+        'INSERT INTO brands (id, name, api_key_hash, template_json, created_at) VALUES (?,?,?,?,?)'
+      ).bind(body.id, body.name, await sha256Hex(key), JSON.stringify(body.template || {}), Math.floor(Date.now() / 1000)).run();
+      return json({ ok: true, id: body.id, apiKey: key, note: 'Save this key now — it is never shown again.' }, 201);
+    }
+    if (m === 'GET') {
+      const rows = await env.DB.prepare('SELECT id, name, created_at FROM brands').all();
+      return json({ brands: rows.results || [] });
+    }
+  }
+
+  // ── Public: re-download existing card (token-gated) ──────────
+  if (seg[0] === 'v1' && seg[1] === 'passes' && seg[3] === 'apple.pkpass' && m === 'GET') {
+    const pass = await getPass(env, seg[2]);
+    if (!pass) return new Response(null, { status: 404 });
+    if (url.searchParams.get('t') !== pass.auth_token) return new Response(null, { status: 401 });
+    return servePkpass(env, { serial: pass.serial, authToken: pass.auth_token, fields: JSON.parse(pass.fields_json) }, pass.updated_at);
+  }
+
+  // ── Admin: apple/google links + log (precede Apple 4-seg GET) ──
+  if (seg[0] === 'v1' && seg[1] === 'passes' && seg.length === 4 && m === 'GET'
+      && ['apple-link', 'google-link', 'log'].includes(seg[3])) {
+    if (!adminOk(request, env)) return json({ error: 'unauthorized' }, 401);
+    const pass = await getPass(env, seg[2]);
+    if (!pass) return json({ error: 'not_found' }, 404);
+
+    if (seg[3] === 'apple-link') {
+      return json({ url: `${env.BASE_URL}/v1/passes/${pass.serial}/apple.pkpass?t=${pass.auth_token}` });
+    }
+    if (seg[3] === 'google-link') {
+      if (!env.GOOGLE_SA_KEY_JSON) return json({ error: 'google_not_configured' }, 500);
+      try {
+        await upsertObject(env, pass.serial, JSON.parse(pass.fields_json));
+        return json({ saveUrl: await saveUrl(env, pass.serial) });
+      } catch (err) {
+        return json({ error: 'google_failed', message: String(err && err.message) }, 500);
+      }
+    }
+    // log
+    const rows = await env.DB.prepare(
+      'SELECT at, kind, message, apple, google FROM update_log WHERE serial=? ORDER BY at DESC, id DESC LIMIT 50'
+    ).bind(pass.serial).all();
+    const sched = await env.DB.prepare(
+      'SELECT send_at, message, sent_at FROM scheduled_messages WHERE serial=? ORDER BY send_at'
+    ).bind(pass.serial).all();
+    return json({ events: rows.results || [], scheduled: sched.results || [] });
   }
 
   // ── Apple web service: device registrations ──────────────────
@@ -86,10 +220,8 @@ async function route(request, env) {
         console.log('device_registered', deviceId.slice(0, 8), serial.slice(0, 8));
         return new Response(null, { status: existing ? 200 : 201 });
       }
-      // DELETE
-      await env.DB.prepare(
-        'DELETE FROM apple_registrations WHERE device_id=? AND serial=?'
-      ).bind(deviceId, serial).run();
+      await env.DB.prepare('DELETE FROM apple_registrations WHERE device_id=? AND serial=?')
+        .bind(deviceId, serial).run();
       return new Response(null, { status: 200 });
     }
 
@@ -107,43 +239,6 @@ async function route(request, env) {
     }
   }
 
-  // ── Public: re-download an existing card's .pkpass (token-gated) ──
-  if (seg[0] === 'v1' && seg[1] === 'passes' && seg[3] === 'apple.pkpass' && m === 'GET') {
-    const pass = await getPass(env, seg[2]);
-    if (!pass) return new Response(null, { status: 404 });
-    if (url.searchParams.get('t') !== pass.auth_token) return new Response(null, { status: 401 });
-    return servePkpass(
-      env,
-      { serial: pass.serial, authToken: pass.auth_token, fields: JSON.parse(pass.fields_json) },
-      pass.updated_at
-    );
-  }
-
-  // ── Admin: Apple re-add link for an existing card ──────────────
-  if (seg[0] === 'v1' && seg[1] === 'passes' && seg[3] === 'apple-link' && m === 'GET') {
-    if (!adminOk(request, env)) return json({ error: 'unauthorized' }, 401);
-    const pass = await getPass(env, seg[2]);
-    if (!pass) return json({ error: 'not_found' }, 404);
-    return json({ url: `${env.BASE_URL}/v1/passes/${pass.serial}/apple.pkpass?t=${pass.auth_token}` });
-  }
-
-  // ── Admin: Google Wallet save link (must precede Apple 4-seg GET) ──
-  if (seg[0] === 'v1' && seg[1] === 'passes' && seg[3] === 'google-link' && m === 'GET') {
-    if (!adminOk(request, env)) return json({ error: 'unauthorized' }, 401);
-    if (!env.GOOGLE_SA_KEY_JSON) {
-      return json({ error: 'google_not_configured', hint: 'npx wrangler secret put GOOGLE_SA_KEY_JSON --config worker/wrangler.toml < secrets/google-wallet-key.json' }, 500);
-    }
-    const pass = await getPass(env, seg[2]);
-    if (!pass) return json({ error: 'not_found' }, 404);
-    try {
-      await upsertObject(env, pass.serial, JSON.parse(pass.fields_json));
-      const url2 = await saveUrl(env, pass.serial);
-      return json({ saveUrl: url2 });
-    } catch (err) {
-      return json({ error: 'google_failed', message: String(err && err.message) }, 500);
-    }
-  }
-
   // ── Apple web service: fetch latest pass ─────────────────────
   if (seg[0] === 'v1' && seg[1] === 'passes' && seg.length === 4 && m === 'GET') {
     const [, , passTypeId, serial] = seg;
@@ -156,11 +251,7 @@ async function route(request, env) {
     if (ims && Math.floor(Date.parse(ims) / 1000) >= pass.updated_at) {
       return new Response(null, { status: 304 });
     }
-    return servePkpass(
-      env,
-      { serial: pass.serial, authToken: pass.auth_token, fields: JSON.parse(pass.fields_json) },
-      pass.updated_at
-    );
+    return servePkpass(env, { serial: pass.serial, authToken: pass.auth_token, fields: JSON.parse(pass.fields_json) }, pass.updated_at);
   }
 
   // ── Apple web service: log ───────────────────────────────────
@@ -170,27 +261,25 @@ async function route(request, env) {
     return new Response(null, { status: 200 });
   }
 
-  // ── Admin: list / get / update ───────────────────────────────
+  // ── Admin: list / get / update / archive / purge ─────────────
   if (seg[0] === 'v1' && seg[1] === 'passes' && seg.length <= 3) {
     if (!adminOk(request, env)) return json({ error: 'unauthorized' }, 401);
 
     if (m === 'GET' && seg.length === 2) {
       const rows = await env.DB.prepare(
-        `SELECT p.serial, p.fields_json, p.created_at, p.updated_at, p.archived_at,
-                (SELECT COUNT(*) FROM apple_registrations r WHERE r.serial = p.serial) AS registrations
+        `SELECT p.serial, p.fields_json, p.created_at, p.updated_at, p.archived_at, p.brand_id,
+                (SELECT COUNT(*) FROM apple_registrations r WHERE r.serial = p.serial) AS registrations,
+                (SELECT COUNT(*) FROM scheduled_messages s WHERE s.serial = p.serial AND s.sent_at IS NULL) AS pending_msgs
          FROM passes p ORDER BY p.created_at DESC LIMIT 100`
       ).all();
       const passes = (rows.results || []).map((r) => {
         let f = {};
         try { f = JSON.parse(r.fields_json); } catch {}
         return {
-          serial: r.serial,
-          guest: f.guest || null,
-          event: f.event || null,
-          created_at: r.created_at,
-          updated_at: r.updated_at,
-          archived_at: r.archived_at || null,
-          registrations: r.registrations,
+          serial: r.serial, guest: f.guest || null, event: f.event || null,
+          brand: r.brand_id || 'love', created_at: r.created_at, updated_at: r.updated_at,
+          archived_at: r.archived_at || null, registrations: r.registrations,
+          pending_msgs: r.pending_msgs || 0,
         };
       });
       return json({ passes });
@@ -200,18 +289,6 @@ async function route(request, env) {
     const pass = serial && (await getPass(env, serial));
     if (!pass) return json({ error: 'not_found' }, 404);
 
-    if (m === 'GET') {
-      return json({
-        serial: pass.serial,
-        fields: JSON.parse(pass.fields_json),
-        created_at: pass.created_at,
-        updated_at: pass.updated_at,
-      });
-    }
-
-    // Archive / unarchive: data is NEVER destroyed. Archived cards still
-    // serve updates to installed devices; they're just hidden from the
-    // default admin list.
     if (m === 'POST' && url.searchParams.get('action') === 'archive') {
       await env.DB.prepare('UPDATE passes SET archived_at=? WHERE serial=?')
         .bind(Math.floor(Date.now() / 1000), serial).run();
@@ -222,9 +299,6 @@ async function route(request, env) {
       return json({ ok: true, unarchived: serial });
     }
 
-    // Privacy purge (GDPR right-to-erasure) — deliberately API-only, no UI
-    // button. Requires echoing the serial in X-Confirm-Purge to prevent
-    // accidents. This is the ONLY true deletion path.
     if (m === 'DELETE') {
       if (request.headers.get('X-Confirm-Purge') !== serial) {
         return json({ error: 'purge_not_confirmed', hint: 'set X-Confirm-Purge: <serial>. For normal removal use ?action=archive.' }, 400);
@@ -234,51 +308,29 @@ async function route(request, env) {
       return json({ ok: true, purged: serial });
     }
 
+    if (m === 'GET') {
+      return json({
+        serial: pass.serial, fields: JSON.parse(pass.fields_json),
+        created_at: pass.created_at, updated_at: pass.updated_at,
+      });
+    }
+
     if (m === 'PATCH') {
       const body = await request.json().catch(() => null);
       if (!body || (!body.fields && !body.changeMessage)) {
         return json({ error: 'bad_request', hint: 'send {fields} and/or {changeMessage}' }, 400);
       }
       const fields = { ...JSON.parse(pass.fields_json), ...(body.fields || {}) };
-      if (body.changeMessage) fields.latest = body.changeMessage; // → lock-screen text
+      if (body.changeMessage) fields.latest = body.changeMessage;
       const now = Math.floor(Date.now() / 1000);
       await env.DB.prepare('UPDATE passes SET fields_json=?, updated_at=? WHERE serial=?')
         .bind(JSON.stringify(fields), now, serial).run();
 
-      // push to every registered device
-      const regs = await env.DB.prepare(
-        'SELECT device_id, push_token FROM apple_registrations WHERE serial=?'
-      ).bind(serial).all();
-      const results = [];
-      for (const r of regs.results || []) {
-        const res = await pushPassUpdate(env, r.push_token);
-        results.push({ device: r.device_id.slice(0, 8), status: res.status });
-        if (res.gone) {
-          await env.DB.prepare(
-            'DELETE FROM apple_registrations WHERE device_id=? AND serial=?'
-          ).bind(r.device_id, serial).run();
-        }
-      }
-
-      // Mirror to Google Wallet if this card has an object there
-      let google = 'not_configured';
-      if (env.GOOGLE_SA_KEY_JSON) {
-        try {
-          if (await objectExists(env, serial)) {
-            await upsertObject(env, serial, fields);
-            google = 'updated';
-            if (body.changeMessage) {
-              const msg = await addMessage(env, serial, body.changeMessage);
-              google = msg.ok ? 'updated+notified' : `updated (notify ${msg.status})`;
-            }
-          } else {
-            google = 'no_object';
-          }
-        } catch (err) {
-          google = 'error: ' + String(err && err.message).slice(0, 120);
-        }
-      }
-      return json({ ok: true, serial, updated_at: now, pushed: results.length, results, google });
+      const { pushed, google } = await notifyAllPlatforms(env, pass, fields, body.changeMessage);
+      await logEvent(env, serial, body.changeMessage ? 'notified' : 'updated', {
+        message: body.changeMessage || null, apple: `pushed:${pushed}`, google,
+      });
+      return json({ ok: true, serial, updated_at: now, pushed, google });
     }
   }
 
@@ -296,7 +348,7 @@ function json(obj, status = 200) {
 function readiness(env) {
   const missing = ['APPLE_PASS_CERT_PEM', 'APPLE_PASS_KEY_PEM', 'APPLE_WWDR_PEM'].filter((k) => !env[k]);
   if (missing.length) return json({ error: 'missing_secrets', missing }, 500);
-  if (!env.DB) return json({ error: 'no_d1_binding', hint: 'npx wrangler d1 create digital-pass, set id in wrangler.toml, apply worker/schema.sql' }, 500);
+  if (!env.DB) return json({ error: 'no_d1_binding' }, 500);
   if (!env.BASE_URL || env.BASE_URL.includes('REPLACE')) return json({ error: 'set BASE_URL in wrangler.toml [vars]' }, 500);
   return null;
 }

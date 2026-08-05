@@ -47,6 +47,11 @@
   .row .name .ev{font-weight:500;color:var(--ink-soft);font-size:13px;}
   .row .serial{font-family:ui-monospace,Menlo,monospace;font-size:11.5px;}
   .row.archived{opacity:.55;background:#fbfaf7;}
+  .pill.sched{background:#fff4e0;color:#8a5a00;}
+  .logbox{border-bottom:1px solid var(--line);background:#fbfaf7;padding:10px 18px 12px 30px;}
+  .logline{font-size:12.5px;padding:4px 0;line-height:1.5;}
+  .logline.pending{color:#8a5a00;}
+  .logline .soft,.logline.soft{color:var(--ink-soft);}
   .arch-tag{font-size:9.5px;font-weight:800;letter-spacing:.8px;color:var(--ink-soft);background:var(--chip);padding:2px 7px;border-radius:99px;vertical-align:middle;}
   .row .meta{font-size:12px;color:var(--ink-soft);margin-top:3px;}
   .row .grow{flex:1;min-width:0;}
@@ -217,6 +222,11 @@ async function demoApi(path, opts) {
   if (path === '/v1/passes' && !opts.method) return { passes: demoPasses };
   if (path.includes('/google-link')) return { saveUrl: 'https://pay.google.com/gp/v/save/DEMO.JWT.LINK' };
   if (path.includes('/apple-link')) return { url: 'https://demo.example/v1/passes/demo/apple.pkpass?t=demo' };
+  if (path.includes('/log')) return { events: [
+    { at: Date.now()/1000-120, kind: 'notified', message: 'You did it — act #251,442 💗', apple: 'pushed:1', google: 'updated+notified' },
+    { at: Date.now()/1000-3600, kind: 'updated', message: null, apple: 'pushed:1', google: 'updated' },
+    { at: Date.now()/1000-7200, kind: 'created', message: 'via API by brand love (+3 scheduled)', apple: null, google: null },
+  ], scheduled: [ { send_at: Date.now()/1000+86400, message: 'Your act of kindness ends tomorrow.', sent_at: null } ] };
   if (opts.method === 'POST' && path.includes('action=archive')) { demoPasses.find(p=>path.includes(p.serial)).archived_at = Date.now()/1000; return { ok:true }; }
   if (opts.method === 'POST' && path.includes('action=unarchive')) { demoPasses.find(p=>path.includes(p.serial)).archived_at = null; return { ok:true }; }
   if (opts.method === 'PATCH') return { ok:true, pushed:1, results:[{device:'demo',status:200}] };
@@ -261,6 +271,7 @@ function passRow(p) {
           <div class="name">${esc(p.guest) || 'Unnamed card'}${p.event ? ' <span class="ev">· ' + esc(p.event) + '</span>' : ''}${archived ? ' <span class="arch-tag">ARCHIVED</span>' : ''}</div>
           <div class="meta"><span class="serial">${p.serial.slice(0,8)}…</span> · created ${rel(p.created_at)} · updated ${rel(p.updated_at)}</div>
         </div>
+        ${p.pending_msgs>0 ? '<span class="pill sched">🕐 '+p.pending_msgs+' queued</span>' : ''}
         ${p.registrations>0
           ? '<span class="pill live">'+p.registrations+' device'+(p.registrations===1?'':'s')+'</span>'
           : '<span class="pill idle">not added yet</span>'}
@@ -270,9 +281,32 @@ function passRow(p) {
              <button class="btn" onclick="showEdit('${p.serial}')">✎ Edit</button>
              <button class="btn" onclick="showAppleLink('${p.serial}')" title="Add to Apple Wallet link"></button>
              <button class="btn" onclick="showGoogleLink('${p.serial}')" title="Save to Google Wallet link">G</button>
+             <button class="btn" onclick="toggleLog('${p.serial}')" title="Message history">🕒</button>
              <button class="btn" onclick="archivePass('${p.serial}')">🗄 Archive</button>`}
         </div>
-      </div>`;
+      </div>
+      <div class="logbox" id="log-${p.serial}" style="display:none"></div>`;
+}
+
+/* ── message log timeline ── */
+async function toggleLog(serial) {
+  const box = document.getElementById('log-'+serial);
+  if (box.style.display !== 'none') { box.style.display = 'none'; return; }
+  box.style.display = 'block';
+  box.innerHTML = '<div class="logline soft">Loading history…</div>';
+  try {
+    const data = await api('/v1/passes/'+serial+'/log');
+    const parts = [];
+    for (const s of (data.scheduled||[]).filter(x=>!x.sent_at)) {
+      parts.push(`<div class="logline pending">🕐 <b>scheduled</b> for ${new Date(s.send_at*1000).toLocaleString()} — “${esc(s.message)}”</div>`);
+    }
+    for (const e of data.events || []) {
+      const icon = {created:'✨', updated:'✎', notified:'🔔', scheduled_sent:'🕐→🔔'}[e.kind] || '•';
+      const detail = [e.apple, e.google].filter(Boolean).join(' · ');
+      parts.push(`<div class="logline">${icon} <b>${e.kind.replace('_',' ')}</b> ${rel(e.at)}${e.message ? ' — “'+esc(e.message)+'”' : ''}${detail ? ' <span class="soft">('+esc(detail)+')</span>' : ''}</div>`);
+    }
+    box.innerHTML = parts.length ? parts.join('') : '<div class="logline soft">No history yet.</div>';
+  } catch(e){ box.innerHTML = '<div class="logline soft">Failed: '+esc(e.message)+'</div>'; }
 }
 async function loadPasses() {
   const list = document.getElementById('list');

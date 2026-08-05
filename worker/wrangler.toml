@@ -26,3 +26,7 @@ GOOGLE_ISSUER_ID = "3388000000023184539"              # Google Wallet issuer (18
 binding = "DB"
 database_name = "digital-pass"
 database_id = "bada8ca5-e2c8-466f-ba35-ff7c5d5901b8"
+
+# Scheduler: fires due scheduled_messages (see platform.js)
+[triggers]
+crons = ["*/5 * * * *"]
