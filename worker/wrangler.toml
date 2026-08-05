@@ -9,7 +9,7 @@ compatibility_date = "2026-07-01"
 #
 # ── Vars ──
 [vars]
-APPLE_TEAM_ID = "REPLACE_ME"                              # 10-char Apple team ID
+APPLE_TEAM_ID = "67K25P7L5H"                              # 10-char Apple team ID
 APPLE_PASS_TYPE_ID = "pass.com.allaboutlove.kindness"     # must match the certificate
 ORG_NAME = "All About Love"
 
