@@ -35,7 +35,7 @@ export function buildPassJson(env, { serial, authToken, fields }) {
     foregroundColor: 'rgb(255, 255, 255)',
     labelColor: 'rgb(255, 214, 224)',
 
-    generic: {
+    storeCard: {
       headerFields: [{ key: 'due', label: 'DUE', value: f.due, changeMessage: 'Due date: %@' }],
       primaryFields: [{ key: 'promise', label: 'MY PROMISE', value: f.promise }],
       secondaryFields: [

@@ -35,7 +35,7 @@ import { upsertObject, saveUrl } from './google.js';
 import {
   brandFromBearer, sha256Hex, randomKey, logEvent, notifyAllPlatforms, runScheduler,
 } from './platform.js';
-import { appleThumbnails } from './images.js';
+import { appleStrip } from './images.js';
 import { PASS_IMAGES } from './assets.gen.js';
 import { ADMIN_HTML } from './admin.gen.js';
 
@@ -368,10 +368,10 @@ function adminOk(request, env) {
 }
 
 async function servePkpass(env, passData, updatedAt) {
-  let images = PASS_IMAGES;
+  let images = PASS_IMAGES; // includes the default crimson strip
   if (passData.fields && passData.fields.photoUrl) {
-    const thumbs = await appleThumbnails(passData.fields.photoUrl);
-    images = { ...PASS_IMAGES, ...thumbs };
+    const photo = await appleStrip(passData.fields.photoUrl);
+    images = { ...PASS_IMAGES, ...photo }; // photo strip replaces default when fetch succeeds
   }
   const pkpass = buildPkpass(buildPassJson(env, passData), images, {
     certPem: env.APPLE_PASS_CERT_PEM,
