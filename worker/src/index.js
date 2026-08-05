@@ -138,11 +138,23 @@ async function route(request, env) {
 
     if (m === 'GET' && seg.length === 2) {
       const rows = await env.DB.prepare(
-        `SELECT p.serial, p.created_at, p.updated_at,
+        `SELECT p.serial, p.fields_json, p.created_at, p.updated_at,
                 (SELECT COUNT(*) FROM apple_registrations r WHERE r.serial = p.serial) AS registrations
          FROM passes p ORDER BY p.created_at DESC LIMIT 50`
       ).all();
-      return json({ passes: rows.results || [] });
+      const passes = (rows.results || []).map((r) => {
+        let f = {};
+        try { f = JSON.parse(r.fields_json); } catch {}
+        return {
+          serial: r.serial,
+          guest: f.guest || null,
+          event: f.event || null,
+          created_at: r.created_at,
+          updated_at: r.updated_at,
+          registrations: r.registrations,
+        };
+      });
+      return json({ passes });
     }
 
     const serial = seg[2];
@@ -156,6 +168,12 @@ async function route(request, env) {
         created_at: pass.created_at,
         updated_at: pass.updated_at,
       });
+    }
+
+    if (m === 'DELETE') {
+      await env.DB.prepare('DELETE FROM apple_registrations WHERE serial=?').bind(serial).run();
+      await env.DB.prepare('DELETE FROM passes WHERE serial=?').bind(serial).run();
+      return json({ ok: true, deleted: serial });
     }
 
     if (m === 'PATCH') {
