@@ -147,6 +147,20 @@
   </div>
 </div>
 
+<!-- apple re-add modal -->
+<div class="overlay" id="appleOverlay">
+  <div class="modal">
+    <h2>Add to Apple Wallet</h2>
+    <div class="sub" id="appleSerial"></div>
+    <div id="appleBody"><div class="note" style="text-align:center">Preparing the link…</div></div>
+    <div class="note">This is the SAME card (same serial) — scan with the iPhone camera, or open the link in Safari on the iPhone. Works for second devices and replacements; updates keep flowing to every device that adds it.</div>
+    <div class="foot">
+      <button class="btn" id="appleCopy" style="display:none" onclick="copyAppleLink()">Copy link</button>
+      <button class="btn" onclick="hide('appleOverlay')">Done</button>
+    </div>
+  </div>
+</div>
+
 <!-- google save-link modal -->
 <div class="overlay" id="googleOverlay">
   <div class="modal">
@@ -202,6 +216,7 @@ async function demoApi(path, opts) {
   await new Promise(r=>setTimeout(r,250));
   if (path === '/v1/passes' && !opts.method) return { passes: demoPasses };
   if (path.includes('/google-link')) return { saveUrl: 'https://pay.google.com/gp/v/save/DEMO.JWT.LINK' };
+  if (path.includes('/apple-link')) return { url: 'https://demo.example/v1/passes/demo/apple.pkpass?t=demo' };
   if (opts.method === 'POST' && path.includes('action=archive')) { demoPasses.find(p=>path.includes(p.serial)).archived_at = Date.now()/1000; return { ok:true }; }
   if (opts.method === 'POST' && path.includes('action=unarchive')) { demoPasses.find(p=>path.includes(p.serial)).archived_at = null; return { ok:true }; }
   if (opts.method === 'PATCH') return { ok:true, pushed:1, results:[{device:'demo',status:200}] };
@@ -253,6 +268,7 @@ function passRow(p) {
           ? `<button class="btn" onclick="unarchivePass('${p.serial}')">↩︎ Unarchive</button>`
           : `<button class="btn" ${p.registrations?'':'disabled'} onclick="showNotify('${p.serial}')">🔔 Notify</button>
              <button class="btn" onclick="showEdit('${p.serial}')">✎ Edit</button>
+             <button class="btn" onclick="showAppleLink('${p.serial}')" title="Add to Apple Wallet link"></button>
              <button class="btn" onclick="showGoogleLink('${p.serial}')" title="Save to Google Wallet link">G</button>
              <button class="btn" onclick="archivePass('${p.serial}')">🗄 Archive</button>`}
         </div>
@@ -317,6 +333,28 @@ async function saveFields() {
     hide('editOverlay'); toast('Saved & pushed ✓'); loadPasses();
   } catch(e){ toast('Failed: '+e.message); }
 }
+
+/* ── apple re-add link ── */
+let appleLink = null;
+async function showAppleLink(serial) {
+  document.getElementById('appleSerial').textContent = serial;
+  document.getElementById('appleBody').innerHTML = '<div class="note" style="text-align:center">Preparing the link…</div>';
+  document.getElementById('appleCopy').style.display = 'none';
+  show('appleOverlay');
+  try {
+    const data = await api('/v1/passes/'+serial+'/apple-link');
+    if (!data.url) throw new Error(data.error || 'no link returned');
+    appleLink = data.url;
+    const qr = qrcode(0, 'M'); qr.addData(data.url); qr.make();
+    document.getElementById('appleBody').innerHTML =
+      '<div style="display:grid;place-items:center;padding:6px 0">'+qr.createImgTag(4,10)+'</div>' +
+      '<div class="note" style="text-align:center"><a href="'+data.url+'" target="_blank" rel="noopener">Open .pkpass link ↗</a></div>';
+    document.getElementById('appleCopy').style.display = '';
+  } catch(e){
+    document.getElementById('appleBody').innerHTML = '<div class="note" style="color:var(--crimson)">Failed: '+esc(e.message)+'</div>';
+  }
+}
+function copyAppleLink(){ if(appleLink){ navigator.clipboard.writeText(appleLink); toast('Link copied'); } }
 
 /* ── google save link ── */
 let googleLink = null;

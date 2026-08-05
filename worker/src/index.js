@@ -107,6 +107,26 @@ async function route(request, env) {
     }
   }
 
+  // ── Public: re-download an existing card's .pkpass (token-gated) ──
+  if (seg[0] === 'v1' && seg[1] === 'passes' && seg[3] === 'apple.pkpass' && m === 'GET') {
+    const pass = await getPass(env, seg[2]);
+    if (!pass) return new Response(null, { status: 404 });
+    if (url.searchParams.get('t') !== pass.auth_token) return new Response(null, { status: 401 });
+    return servePkpass(
+      env,
+      { serial: pass.serial, authToken: pass.auth_token, fields: JSON.parse(pass.fields_json) },
+      pass.updated_at
+    );
+  }
+
+  // ── Admin: Apple re-add link for an existing card ──────────────
+  if (seg[0] === 'v1' && seg[1] === 'passes' && seg[3] === 'apple-link' && m === 'GET') {
+    if (!adminOk(request, env)) return json({ error: 'unauthorized' }, 401);
+    const pass = await getPass(env, seg[2]);
+    if (!pass) return json({ error: 'not_found' }, 404);
+    return json({ url: `${env.BASE_URL}/v1/passes/${pass.serial}/apple.pkpass?t=${pass.auth_token}` });
+  }
+
   // ── Admin: Google Wallet save link (must precede Apple 4-seg GET) ──
   if (seg[0] === 'v1' && seg[1] === 'passes' && seg[3] === 'google-link' && m === 'GET') {
     if (!adminOk(request, env)) return json({ error: 'unauthorized' }, 401);
