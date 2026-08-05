@@ -5,10 +5,10 @@
   "description": "Self-deployed Apple & Google Wallet pass service — Cloudflare Worker + D1. Own your passes.",
   "type": "module",
   "scripts": {
-    "dev": "wrangler dev --config worker/wrangler.toml",
-    "deploy": "wrangler deploy --config worker/wrangler.toml",
+    "dev": "npm run embed && wrangler dev --config worker/wrangler.toml",
+    "deploy": "npm run embed && wrangler deploy --config worker/wrangler.toml",
     "test:sign": "node test/sign-test.mjs",
-    "assets:embed": "node scripts/embed-assets.mjs"
+    "embed": "node scripts/embed-assets.mjs && node scripts/embed-admin.mjs"
   },
   "dependencies": {
     "fflate": "^0.8.2",

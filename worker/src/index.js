@@ -22,6 +22,7 @@ import { buildPkpass } from './pkpass.js';
 import { buildPassJson, DEFAULT_FIELDS } from './testpass.js';
 import { pushPassUpdate } from './apns.js';
 import { PASS_IMAGES } from './assets.gen.js';
+import { ADMIN_HTML } from './admin.gen.js';
 
 export default {
   async fetch(request, env) {
@@ -41,6 +42,11 @@ async function route(request, env) {
   const m = request.method;
 
   if (p === '/health') return json({ ok: true, service: 'digital-pass', step: 2, db: !!env.DB });
+
+  // ── admin UI (ships inside the Worker) ───────────────────────
+  if ((p === '/admin' || p === '') && m === 'GET') {
+    return new Response(ADMIN_HTML, { headers: { 'Content-Type': 'text/html; charset=utf-8' } });
+  }
 
   // ── mint a test pass ─────────────────────────────────────────
   if (p === '/v1/test-pass' && m === 'GET') {

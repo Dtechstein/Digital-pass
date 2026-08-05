@@ -1,0 +1,312 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Pass Studio — Admin</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcode-generator/1.4.4/qrcode.min.js"></script>
+<style>
+  :root{
+    --bg:#f6f6f4; --panel:#fff; --ink:#1a1a1a; --ink-soft:#6b6b6b; --line:#e7e5e0;
+    --crimson:#a4133c; --crimson-deep:#800f2f; --blush:#fff0f3; --good:#1a7f4e; --chip:#f1efe9;
+    --card-bg:linear-gradient(160deg,#800f2f 0%,#a4133c 55%,#c9184a 100%);
+  }
+  *{box-sizing:border-box;margin:0;padding:0;}
+  body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Inter,Roboto,sans-serif;background:var(--bg);color:var(--ink);min-height:100vh;}
+
+  .topbar{display:flex;align-items:center;gap:14px;padding:12px 22px;background:var(--panel);border-bottom:1px solid var(--line);}
+  .brandmark{display:flex;align-items:center;gap:9px;font-weight:700;font-size:15px;}
+  .brandmark .dot{width:26px;height:26px;border-radius:8px;background:var(--card-bg);display:grid;place-items:center;color:#fff;font-size:13px;}
+  .crumb{color:var(--ink-soft);font-size:13px;}
+  .topbar .right{margin-left:auto;display:flex;gap:10px;align-items:center;}
+  .btn{border:1px solid var(--line);background:#fff;padding:8px 14px;border-radius:9px;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit;color:var(--ink);transition:all .13s;}
+  .btn:hover{border-color:#cfcbc2;}
+  .btn.primary{background:var(--crimson);border-color:var(--crimson);color:#fff;}
+  .btn.primary:hover{background:var(--crimson-deep);}
+  .btn.ghost{border-color:transparent;color:var(--ink-soft);}
+  .btn:disabled{opacity:.5;cursor:default;}
+
+  .wrap{max-width:980px;margin:0 auto;padding:26px 22px 60px;}
+
+  /* key gate */
+  .gate{max-width:420px;margin:80px auto;background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:28px;text-align:center;}
+  .gate .dot{width:44px;height:44px;border-radius:13px;background:var(--card-bg);display:grid;place-items:center;color:#fff;font-size:21px;margin:0 auto 14px;}
+  .gate h1{font-size:18px;margin-bottom:6px;}
+  .gate p{font-size:13px;color:var(--ink-soft);margin-bottom:18px;line-height:1.5;}
+  .gate input{width:100%;border:1px solid var(--line);border-radius:10px;padding:11px 13px;font-size:14px;font-family:inherit;margin-bottom:12px;text-align:center;}
+  .gate .err{color:var(--crimson);font-size:12.5px;margin-top:10px;display:none;}
+
+  /* list */
+  .head-row{display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;}
+  .head-row h1{font-size:19px;}
+  .head-row .sub{font-size:13px;color:var(--ink-soft);margin-top:3px;}
+  .list{background:var(--panel);border:1px solid var(--line);border-radius:14px;overflow:hidden;}
+  .row{display:flex;align-items:center;gap:14px;padding:14px 18px;border-bottom:1px solid var(--line);}
+  .row:last-child{border-bottom:0;}
+  .row .serial{font-family:ui-monospace,Menlo,monospace;font-size:12.5px;color:var(--ink);}
+  .row .meta{font-size:12px;color:var(--ink-soft);margin-top:3px;}
+  .row .grow{flex:1;min-width:0;}
+  .pill{display:inline-flex;align-items:center;gap:6px;font-size:11.5px;font-weight:700;padding:4px 10px;border-radius:99px;}
+  .pill.live{background:#e8f5ee;color:var(--good);}
+  .pill.live::before{content:"";width:7px;height:7px;border-radius:50%;background:var(--good);}
+  .pill.idle{background:var(--chip);color:var(--ink-soft);}
+  .row .actions{display:flex;gap:8px;}
+  .empty{padding:46px;text-align:center;color:var(--ink-soft);font-size:14px;line-height:1.6;}
+
+  /* modal */
+  .overlay{position:fixed;inset:0;background:rgba(20,10,14,.45);display:none;align-items:center;justify-content:center;z-index:50;padding:20px;}
+  .overlay.show{display:flex;}
+  .modal{background:#fff;border-radius:16px;max-width:440px;width:100%;padding:22px;box-shadow:0 24px 70px -20px rgba(0,0,0,.4);}
+  .modal h2{font-size:16px;margin-bottom:4px;}
+  .modal .sub{font-size:12.5px;color:var(--ink-soft);margin-bottom:16px;font-family:ui-monospace,Menlo,monospace;}
+  .modal label{display:block;font-size:11px;font-weight:700;letter-spacing:.6px;color:var(--ink-soft);margin:12px 0 5px;}
+  .modal input,.modal textarea{width:100%;border:1px solid var(--line);border-radius:9px;padding:10px 12px;font-size:13.5px;font-family:inherit;resize:vertical;}
+  .modal textarea{min-height:74px;}
+  .modal .foot{display:flex;justify-content:flex-end;gap:10px;margin-top:18px;}
+  .modal .note{font-size:12px;color:var(--ink-soft);margin-top:12px;line-height:1.5;}
+  .fields-grid{display:grid;grid-template-columns:1fr 1fr;gap:0 14px;}
+  #qrBox{display:grid;place-items:center;padding:10px 0 4px;}
+  #qrBox img{border:1px solid var(--line);border-radius:12px;padding:10px;background:#fff;}
+
+  .toast{position:fixed;bottom:26px;left:50%;transform:translateX(-50%) translateY(8px);background:var(--ink);color:#fff;font-size:13px;padding:10px 18px;border-radius:99px;opacity:0;transition:all .25s;pointer-events:none;z-index:99;}
+  .toast.show{opacity:1;transform:translateX(-50%) translateY(0);}
+  .demo-badge{background:#ffd166;color:#5c4400;font-size:11px;font-weight:800;padding:3px 10px;border-radius:99px;letter-spacing:.5px;}
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <div class="brandmark"><div class="dot">♥</div> Pass Studio</div>
+  <div class="crumb">All About Love · Kindness Card</div>
+  <span class="demo-badge" id="demoBadge" style="display:none">DEMO DATA</span>
+  <div class="right">
+    <button class="btn" id="newCardBtn" style="display:none">＋ New test card</button>
+    <button class="btn ghost" id="lockBtn" style="display:none">Sign out</button>
+  </div>
+</div>
+
+<!-- key gate -->
+<div class="gate" id="gate">
+  <div class="dot">♥</div>
+  <h1>Pass Studio Admin</h1>
+  <p>Enter your admin key to manage cards.<br>It stays on this device.</p>
+  <input type="password" id="keyInput" placeholder="Admin key" onkeydown="if(event.key==='Enter')connect()">
+  <button class="btn primary" style="width:100%" onclick="connect()">Connect</button>
+  <div class="err" id="gateErr">That key was rejected — check it and try again.</div>
+</div>
+
+<!-- main -->
+<div class="wrap" id="main" style="display:none">
+  <div class="head-row">
+    <div>
+      <h1>Cards</h1>
+      <div class="sub" id="countSub">—</div>
+    </div>
+    <button class="btn" onclick="loadPasses()">↻ Refresh</button>
+  </div>
+  <div class="list" id="list"><div class="empty">Loading…</div></div>
+</div>
+
+<!-- notify modal -->
+<div class="overlay" id="notifyOverlay">
+  <div class="modal">
+    <h2>Send a notification</h2>
+    <div class="sub" id="notifySerial"></div>
+    <label>MESSAGE (APPEARS ON THE LOCK SCREEN)</label>
+    <textarea id="notifyMsg" placeholder="Your act of kindness ends tomorrow."></textarea>
+    <div class="note">Delivered to every iPhone this card is installed on. Apple mutes cards that are updated too frequently — in production, keep to the reminder schedule.</div>
+    <div class="foot">
+      <button class="btn" onclick="hide('notifyOverlay')">Cancel</button>
+      <button class="btn primary" id="notifySend" onclick="sendNotify()">➤ Send</button>
+    </div>
+  </div>
+</div>
+
+<!-- edit modal -->
+<div class="overlay" id="editOverlay">
+  <div class="modal">
+    <h2>Edit card fields</h2>
+    <div class="sub" id="editSerial"></div>
+    <div class="fields-grid">
+      <div><label>GUEST</label><input id="f_guest"></div>
+      <div><label>EVENT</label><input id="f_event"></div>
+      <div><label>DUE</label><input id="f_due"></div>
+      <div><label>ACTS DONE</label><input id="f_acts"></div>
+    </div>
+    <label>PROMISE (FRONT OF CARD)</label><input id="f_promise">
+    <label>THE MOVEMENT</label><input id="f_movement">
+    <div class="note">Saving pushes the changes silently to installed cards (no notification unless you also send a message).</div>
+    <div class="foot">
+      <button class="btn" onclick="hide('editOverlay')">Cancel</button>
+      <button class="btn primary" onclick="saveFields()">Save & push</button>
+    </div>
+  </div>
+</div>
+
+<!-- new card modal -->
+<div class="overlay" id="qrOverlay">
+  <div class="modal">
+    <h2>Add a test card to an iPhone</h2>
+    <div class="sub">Scan with the iPhone camera → opens in Safari → Add</div>
+    <div id="qrBox"></div>
+    <div class="note" id="qrUrlNote" style="text-align:center"></div>
+    <div class="foot">
+      <button class="btn" onclick="hide('qrOverlay')">Done</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+const DEMO = new URLSearchParams(location.search).has('demo');
+const BASE = DEMO ? '' : location.origin;
+let KEY = null, currentSerial = null;
+
+/* ── demo data ── */
+const demoPasses = [
+  { serial: 'b6efd3a4-0af3-45aa-9041-4b6e079afd27', created_at: Date.now()/1000-3600, updated_at: Date.now()/1000-120, registrations: 1 },
+  { serial: '8fb5edf0-b3a3-465c-bbea-9df620e998e2', created_at: Date.now()/1000-7200, updated_at: Date.now()/1000-3800, registrations: 0 },
+  { serial: '713c1514-120a-49af-b54f-926cc06938e2', created_at: Date.now()/1000-90000, updated_at: Date.now()/1000-90000, registrations: 0 },
+];
+const demoFields = { guest:'Sarah', event:'Rivera Wedding', due:'Aug 11', acts:'0', promise:'I promised an act of kindness', movement:'Act #247,801 of one million' };
+
+async function api(path, opts = {}) {
+  if (DEMO) return demoApi(path, opts);
+  const res = await fetch(BASE + path, {
+    ...opts,
+    headers: { 'X-Admin-Key': KEY, 'Content-Type': 'application/json', ...(opts.headers||{}) },
+  });
+  if (res.status === 401) throw new Error('unauthorized');
+  return res.json();
+}
+async function demoApi(path, opts) {
+  await new Promise(r=>setTimeout(r,250));
+  if (path === '/v1/passes' && !opts.method) return { passes: demoPasses };
+  if (opts.method === 'PATCH') return { ok:true, pushed:1, results:[{device:'demo',status:200}] };
+  if (path.startsWith('/v1/passes/')) return { fields: demoFields };
+  return {};
+}
+
+/* ── auth flow ── */
+async function connect() {
+  KEY = document.getElementById('keyInput').value.trim();
+  if (!KEY && !DEMO) return;
+  try {
+    await api('/v1/passes');
+    localStorage.setItem('psk', KEY || 'demo');
+    enter();
+  } catch { document.getElementById('gateErr').style.display = 'block'; }
+}
+function enter() {
+  document.getElementById('gate').style.display = 'none';
+  document.getElementById('main').style.display = 'block';
+  document.getElementById('newCardBtn').style.display = '';
+  document.getElementById('lockBtn').style.display = '';
+  loadPasses();
+}
+document.getElementById('lockBtn').onclick = () => { localStorage.removeItem('psk'); location.reload(); };
+document.getElementById('newCardBtn').onclick = showQr;
+
+/* ── list ── */
+function rel(ts) {
+  const s = Math.max(1, Math.floor(Date.now()/1000 - ts));
+  if (s < 90) return s + 's ago';
+  if (s < 5400) return Math.round(s/60) + 'm ago';
+  if (s < 129600) return Math.round(s/3600) + 'h ago';
+  return Math.round(s/86400) + 'd ago';
+}
+async function loadPasses() {
+  const list = document.getElementById('list');
+  try {
+    const data = await api('/v1/passes');
+    const passes = data.passes || [];
+    document.getElementById('countSub').textContent =
+      passes.length + ' card' + (passes.length===1?'':'s') + ' · ' +
+      passes.filter(p=>p.registrations>0).length + ' installed on a device';
+    if (!passes.length) { list.innerHTML = '<div class="empty">No cards yet.<br>Mint one with “＋ New test card”.</div>'; return; }
+    list.innerHTML = passes.map(p => `
+      <div class="row">
+        <div class="grow">
+          <div class="serial">${p.serial.slice(0,8)}…</div>
+          <div class="meta">created ${rel(p.created_at)} · updated ${rel(p.updated_at)}</div>
+        </div>
+        ${p.registrations>0
+          ? '<span class="pill live">'+p.registrations+' device'+(p.registrations===1?'':'s')+'</span>'
+          : '<span class="pill idle">not added yet</span>'}
+        <div class="actions">
+          <button class="btn" ${p.registrations?'':'disabled'} onclick="showNotify('${p.serial}')">🔔 Notify</button>
+          <button class="btn" onclick="showEdit('${p.serial}')">✎ Edit</button>
+        </div>
+      </div>`).join('');
+  } catch (e) {
+    list.innerHTML = '<div class="empty">Could not load — ' + e.message + '</div>';
+  }
+}
+
+/* ── notify ── */
+function showNotify(serial) {
+  currentSerial = serial;
+  document.getElementById('notifySerial').textContent = serial;
+  document.getElementById('notifyMsg').value = '';
+  show('notifyOverlay');
+  document.getElementById('notifyMsg').focus();
+}
+async function sendNotify() {
+  const msg = document.getElementById('notifyMsg').value.trim();
+  if (!msg) return;
+  const btn = document.getElementById('notifySend'); btn.disabled = true;
+  try {
+    const r = await api('/v1/passes/'+currentSerial, { method:'PATCH', body: JSON.stringify({ changeMessage: msg }) });
+    hide('notifyOverlay');
+    toast(r.pushed ? '🔔 Sent to '+r.pushed+' device'+(r.pushed===1?'':'s') : 'Saved — no devices registered');
+    loadPasses();
+  } catch(e){ toast('Failed: '+e.message); }
+  btn.disabled = false;
+}
+
+/* ── edit ── */
+const FIELD_IDS = ['guest','event','due','acts','promise','movement'];
+async function showEdit(serial) {
+  currentSerial = serial;
+  document.getElementById('editSerial').textContent = serial;
+  show('editOverlay');
+  try {
+    const data = await api('/v1/passes/'+serial);
+    for (const k of FIELD_IDS) document.getElementById('f_'+k).value = (data.fields||{})[k] ?? '';
+  } catch(e){ toast('Failed to load: '+e.message); }
+}
+async function saveFields() {
+  const fields = {};
+  for (const k of FIELD_IDS) fields[k] = document.getElementById('f_'+k).value;
+  try {
+    await api('/v1/passes/'+currentSerial, { method:'PATCH', body: JSON.stringify({ fields }) });
+    hide('editOverlay'); toast('Saved & pushed ✓'); loadPasses();
+  } catch(e){ toast('Failed: '+e.message); }
+}
+
+/* ── new card QR ── */
+function showQr() {
+  const url = (DEMO ? 'https://digital-pass.small-bread-a578.workers.dev' : location.origin) + '/v1/test-pass';
+  const qr = qrcode(0, 'M'); qr.addData(url); qr.make();
+  document.getElementById('qrBox').innerHTML = qr.createImgTag(5, 10);
+  document.getElementById('qrUrlNote').textContent = url;
+  show('qrOverlay');
+}
+
+/* ── utils ── */
+function show(id){ document.getElementById(id).classList.add('show'); }
+function hide(id){ document.getElementById(id).classList.remove('show'); }
+function toast(t){ const el=document.getElementById('toast'); el.textContent=t; el.classList.add('show'); setTimeout(()=>el.classList.remove('show'),2600); }
+
+/* ── boot ── */
+if (DEMO) {
+  document.getElementById('demoBadge').style.display = '';
+  KEY = 'demo'; enter();
+} else {
+  const saved = localStorage.getItem('psk');
+  if (saved) { KEY = saved; api('/v1/passes').then(enter).catch(()=>localStorage.removeItem('psk')); }
+}
+</script>
+</body>
+</html>
