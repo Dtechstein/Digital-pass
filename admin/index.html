@@ -89,6 +89,7 @@
   <div class="crumb">All About Love · Kindness Card</div>
   <span class="demo-badge" id="demoBadge" style="display:none">DEMO DATA</span>
   <div class="right">
+    <button class="btn" id="brandsBtn" style="display:none" onclick="showBrands()">🏷 Brands</button>
     <button class="btn" id="newCardBtn" style="display:none">＋ New test card</button>
     <button class="btn ghost" id="lockBtn" style="display:none">Sign out</button>
   </div>
@@ -144,10 +145,31 @@
     </div>
     <label>PROMISE (FRONT OF CARD)</label><input id="f_promise">
     <label>THE MOVEMENT</label><input id="f_movement">
+    <label>PHOTO URL (guest photo — square on Apple, wide hero on Google)</label><input id="f_photoUrl" placeholder="https://…/photo.jpg">
     <div class="note">Saving pushes the changes silently to installed cards (no notification unless you also send a message).</div>
     <div class="foot">
       <button class="btn" onclick="hide('editOverlay')">Cancel</button>
       <button class="btn primary" onclick="saveFields()">Save & push</button>
+    </div>
+  </div>
+</div>
+
+<!-- brands modal -->
+<div class="overlay" id="brandsOverlay">
+  <div class="modal">
+    <h2>Brands</h2>
+    <div class="sub">Each brand gets its own API key for creating cards</div>
+    <div id="brandsList" style="margin-bottom:14px"></div>
+    <label>NEW BRAND — ID (short, lowercase)</label><input id="b_id" placeholder="binah">
+    <label>NAME (shown on cards)</label><input id="b_name" placeholder="Binah">
+    <div id="brandKeyBox" style="display:none;margin-top:12px;background:var(--blush);border:1px solid var(--crimson);border-radius:10px;padding:12px">
+      <div style="font-size:11px;font-weight:800;letter-spacing:.6px;color:var(--crimson)">API KEY — SHOWN ONLY ONCE, COPY IT NOW</div>
+      <div id="brandKeyVal" style="font-family:ui-monospace,Menlo,monospace;font-size:12px;word-break:break-all;margin:8px 0"></div>
+      <button class="btn" onclick="copyBrandKey()">Copy key</button>
+    </div>
+    <div class="foot">
+      <button class="btn" onclick="hide('brandsOverlay')">Close</button>
+      <button class="btn primary" onclick="createBrand()">Create brand</button>
     </div>
   </div>
 </div>
@@ -222,6 +244,8 @@ async function demoApi(path, opts) {
   if (path === '/v1/passes' && !opts.method) return { passes: demoPasses };
   if (path.includes('/google-link')) return { saveUrl: 'https://pay.google.com/gp/v/save/DEMO.JWT.LINK' };
   if (path.includes('/apple-link')) return { url: 'https://demo.example/v1/passes/demo/apple.pkpass?t=demo' };
+  if (path === '/v1/brands' && opts.method === 'POST') return { ok:true, apiKey: 'demo_' + 'x'.repeat(40) };
+  if (path === '/v1/brands') return { brands: [ { id:'love', name:'All About Love', created_at: Date.now()/1000-86400 } ] };
   if (path.includes('/log')) return { events: [
     { at: Date.now()/1000-120, kind: 'notified', message: 'You did it — act #251,442 💗', apple: 'pushed:1', google: 'updated+notified' },
     { at: Date.now()/1000-3600, kind: 'updated', message: null, apple: 'pushed:1', google: 'updated' },
@@ -248,6 +272,7 @@ function enter() {
   document.getElementById('gate').style.display = 'none';
   document.getElementById('main').style.display = 'block';
   document.getElementById('newCardBtn').style.display = '';
+  document.getElementById('brandsBtn').style.display = '';
   document.getElementById('lockBtn').style.display = '';
   loadPasses();
 }
@@ -342,14 +367,15 @@ async function sendNotify() {
   try {
     const r = await api('/v1/passes/'+currentSerial, { method:'PATCH', body: JSON.stringify({ changeMessage: msg }) });
     hide('notifyOverlay');
-    toast(r.pushed ? '🔔 Sent to '+r.pushed+' device'+(r.pushed===1?'':'s') : 'Saved — no devices registered');
+    const gNote = r.google && r.google !== 'not_configured' && r.google !== 'no_object' ? ' · Google: '+r.google : '';
+    toast((r.pushed ? '🔔 Apple: '+r.pushed+' device'+(r.pushed===1?'':'s') : 'No Apple devices')+gNote);
     loadPasses();
   } catch(e){ toast('Failed: '+e.message); }
   btn.disabled = false;
 }
 
 /* ── edit ── */
-const FIELD_IDS = ['guest','event','due','acts','promise','movement'];
+const FIELD_IDS = ['guest','event','due','acts','promise','movement','photoUrl'];
 async function showEdit(serial) {
   currentSerial = serial;
   document.getElementById('editSerial').textContent = serial;
@@ -367,6 +393,42 @@ async function saveFields() {
     hide('editOverlay'); toast('Saved & pushed ✓'); loadPasses();
   } catch(e){ toast('Failed: '+e.message); }
 }
+
+/* ── brands ── */
+let brandKey = null;
+async function showBrands() {
+  document.getElementById('brandKeyBox').style.display = 'none';
+  document.getElementById('b_id').value = ''; document.getElementById('b_name').value = '';
+  show('brandsOverlay');
+  const list = document.getElementById('brandsList');
+  list.innerHTML = '<div class="logline soft">Loading…</div>';
+  try {
+    const data = await api('/v1/brands');
+    list.innerHTML = (data.brands||[]).map(b =>
+      `<div class="logline">🏷 <b>${esc(b.name)}</b> <span class="soft">(${esc(b.id)} · created ${rel(b.created_at)})</span></div>`
+    ).join('') || '<div class="logline soft">No brands yet.</div>';
+  } catch(e){ list.innerHTML = '<div class="logline soft">Failed: '+esc(e.message)+'</div>'; }
+}
+async function createBrand() {
+  const id = document.getElementById('b_id').value.trim().toLowerCase();
+  const name = document.getElementById('b_name').value.trim();
+  if (!id || !name) { toast('Need both an ID and a name'); return; }
+  try {
+    const r = await api('/v1/brands', { method:'POST', body: JSON.stringify({ id, name }) });
+    if (!r.apiKey) throw new Error(r.message || r.error || 'failed');
+    brandKey = r.apiKey;
+    document.getElementById('brandKeyVal').textContent = r.apiKey;
+    document.getElementById('brandKeyBox').style.display = 'block';
+    showBrandsListOnly();
+  } catch(e){ toast('Failed: '+e.message); }
+}
+async function showBrandsListOnly(){
+  try { const data = await api('/v1/brands');
+    document.getElementById('brandsList').innerHTML = (data.brands||[]).map(b =>
+      `<div class="logline">🏷 <b>${esc(b.name)}</b> <span class="soft">(${esc(b.id)})</span></div>`).join('');
+  } catch {}
+}
+function copyBrandKey(){ if(brandKey){ navigator.clipboard.writeText(brandKey); toast('Key copied — store it safely'); } }
 
 /* ── apple re-add link ── */
 let appleLink = null;

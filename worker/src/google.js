@@ -8,6 +8,8 @@
  * until publishing access is granted.
  */
 
+import { googleHeroUrl } from './images.js';
+
 const WALLET_API = 'https://walletobjects.googleapis.com/walletobjects/v1';
 const SCOPE = 'https://www.googleapis.com/auth/wallet_object.issuer';
 const encoder = new TextEncoder();
@@ -109,7 +111,9 @@ function objectId(env, serial) {
 }
 
 function objectPayload(env, serial, f) {
+  const hero = f.photoUrl ? { heroImage: { sourceUri: { uri: googleHeroUrl(f.photoUrl) } } } : {};
   return {
+    ...hero,
     id: objectId(env, serial),
     classId: classId(env),
     state: 'ACTIVE',

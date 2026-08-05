@@ -35,6 +35,7 @@ import { upsertObject, saveUrl } from './google.js';
 import {
   brandFromBearer, sha256Hex, randomKey, logEvent, notifyAllPlatforms, runScheduler,
 } from './platform.js';
+import { appleThumbnails } from './images.js';
 import { PASS_IMAGES } from './assets.gen.js';
 import { ADMIN_HTML } from './admin.gen.js';
 
@@ -366,8 +367,13 @@ function adminOk(request, env) {
   return env.ADMIN_KEY && request.headers.get('X-Admin-Key') === env.ADMIN_KEY;
 }
 
-function servePkpass(env, passData, updatedAt) {
-  const pkpass = buildPkpass(buildPassJson(env, passData), PASS_IMAGES, {
+async function servePkpass(env, passData, updatedAt) {
+  let images = PASS_IMAGES;
+  if (passData.fields && passData.fields.photoUrl) {
+    const thumbs = await appleThumbnails(passData.fields.photoUrl);
+    images = { ...PASS_IMAGES, ...thumbs };
+  }
+  const pkpass = buildPkpass(buildPassJson(env, passData), images, {
     certPem: env.APPLE_PASS_CERT_PEM,
     keyPem: env.APPLE_PASS_KEY_PEM,
     wwdrPem: env.APPLE_WWDR_PEM,
