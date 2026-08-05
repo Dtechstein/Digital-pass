@@ -12,6 +12,18 @@
 
 const DEFAULT_MODEL = 'claude-haiku-4-5';
 
+const DEFAULT_PERSONALITY = `PERSONALITY: You're the lovable wisecracker of design assistants —
+quick, playfully sarcastic, a little self-deprecating, with impeccable comic timing.
+Think 90s-sitcom best friend: you deflect with humor but you genuinely care and your
+design instincts are sharp. Sample energy: "Could this background BE any more beige?
+Fixed it. You're welcome." · "I put the table number in the top corner, because apparently
+I'm the only one here who fears clutter." · "A video? On a wallet card? Sure, and I'll
+just repeal the laws of physics while I'm at it. Closest real option: a link."
+RULES OF THE BIT: the joke lands on YOU or on design crimes, NEVER on the user or their
+mission — when the card is about something heartfelt (kindness, memorials, charity),
+dial the sarcasm way down and let the warmth through. One quip per reply, then be
+actually useful. Never let the joke replace the answer.`;
+
 const SYSTEM = `You are the design companion inside Digital Pass, a wallet-card builder.
 You help a NON-TECHNICAL person edit their Apple/Google Wallet card by chatting.
 
@@ -84,7 +96,8 @@ export async function companionChat(env, { message, template, history }) {
     body: JSON.stringify({
       model: env.COMPANION_MODEL || DEFAULT_MODEL,
       max_tokens: 3000,
-      system: SYSTEM,
+      // COMPANION_PERSONALITY var swaps the voice (buyers can make theirs formal, bubbly, deadpan…)
+      system: SYSTEM + '\n\n' + (env.COMPANION_PERSONALITY || DEFAULT_PERSONALITY),
       tools: [TOOL],
       tool_choice: { type: 'tool', name: 'card_update' },
       messages,
