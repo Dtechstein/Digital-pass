@@ -46,10 +46,13 @@
   .ed .danger{color:var(--crimson);border-color:#f0d4dc;margin-top:10px;}
   .colorrow{display:flex;align-items:center;gap:10px;margin-top:6px;}
   .colorrow input[type=color]{width:38px;height:30px;border:1px solid var(--line);border-radius:8px;padding:2px;background:#fff;}
+  .hexin{width:84px;border:1px solid var(--line);border-radius:8px;padding:6px 8px;font-size:12.5px;font-family:ui-monospace,Menlo,monospace;}
   .colorrow span{font-size:12px;color:var(--ink-soft);}
   .addbtns{display:flex;flex-wrap:wrap;gap:8px;}
   .place-btn{display:block;width:100%;text-align:left;border:1px solid var(--line);background:#fff;border-radius:11px;padding:10px 12px;margin-bottom:8px;cursor:pointer;font-family:inherit;transition:all .12s;}
-  .place-btn:hover{border-color:var(--crimson);background:var(--blush);}
+  .place-btn:hover,.place-btn.hi{border-color:#e6b800;background:#fff8e6;box-shadow:0 0 0 1px #ffd166;}
+  .zone{border-radius:10px;transition:box-shadow .15s,background .15s;}
+  .zone.hi{box-shadow:0 0 0 2px #ffd166, 0 0 22px rgba(255,209,102,.45);background:rgba(255,209,102,.12);}
   .pb-name{display:block;font-size:13px;font-weight:700;color:var(--ink);}
   .pb-hint{display:block;font-size:11px;color:var(--ink-soft);margin-top:2px;}
   .chip{border:1px solid var(--line);background:#fff;border-radius:99px;padding:6px 12px;font-size:12px;cursor:pointer;font-family:inherit;font-weight:600;}
@@ -234,18 +237,20 @@ function renderCard(){
   p.style.background=`linear-gradient(160deg, ${shade(tpl.colors.bg,-18)} 0%, ${tpl.colors.bg} 55%, ${shade(tpl.colors.bg,22)} 100%)`;
   p.style.color=tpl.colors.fg;
   const F=tpl.fields;
+  const zone=(s,inner)=>`<div class="zone" id="zone-${s}" data-zone="${s}"
+    onmouseenter="hiZone('${s}',true)" onmouseleave="hiZone('${s}',false)">${inner}</div>`;
   let html=`<div class="inner">
     <div class="phead">
       <div class="plogo pf${sel&&sel.type==='logo'?' sel':''}" onclick="event.stopPropagation();pick('logo')">
         <div class="heart">💗</div><span>${esc(tpl.logoText||tpl.orgName)}</span>
       </div>
-      <div class="hfields">${(F.header||[]).map((f,i)=>fieldHtml('header',i,f)).join('')||sectionAdd('header')}</div>
+      ${zone('header',`<div class="hfields">${(F.header||[]).map((f,i)=>fieldHtml('header',i,f)).join('')||sectionAdd('header')}</div>`)}
     </div>`;
   if(!flipped){
     html+=`<div class="pbody">
-      ${(F.primary||[]).map((f,i)=>fieldHtml('primary',i,f,'primary-f')).join('')||sectionAdd('primary')}
-      <div class="frow">${(F.secondary||[]).map((f,i)=>fieldHtml('secondary',i,f)).join('')||sectionAdd('secondary')}</div>
-      <div class="frow">${(F.auxiliary||[]).map((f,i)=>fieldHtml('auxiliary',i,f)).join('')||sectionAdd('auxiliary')}</div>
+      ${zone('primary',(F.primary||[]).map((f,i)=>fieldHtml('primary',i,f,'primary-f')).join('')||sectionAdd('primary'))}
+      ${zone('secondary',`<div class="frow">${(F.secondary||[]).map((f,i)=>fieldHtml('secondary',i,f)).join('')||sectionAdd('secondary')}</div>`)}
+      ${zone('auxiliary',`<div class="frow">${(F.auxiliary||[]).map((f,i)=>fieldHtml('auxiliary',i,f)).join('')||sectionAdd('auxiliary')}</div>`)}
     </div>
     <div class="qr-zone${sel&&sel.type==='barcode'?' sel':''}" onclick="event.stopPropagation();pick('barcode')">
       <div class="qr-card"><div class="qrbox"></div><div class="qr-cap">${esc(barcodePreview())}</div></div>
@@ -253,7 +258,7 @@ function renderCard(){
   } else {
     html+=`<div class="backface">
       <div style="font-size:10px;font-weight:800;letter-spacing:1px;opacity:.7;padding:4px">BACK OF CARD</div>
-      ${(F.back||[]).map((f,i)=>`<div class="bfield">${fieldHtml('back',i,f)}</div>`).join('')||sectionAdd('back')}
+      ${zone('back',(F.back||[]).map((f,i)=>`<div class="bfield">${fieldHtml('back',i,f)}</div>`).join('')||sectionAdd('back'))}
     </div>`;
   }
   html+='</div>';
@@ -288,7 +293,8 @@ function renderPanel(){
     </div></div>
     <div class="ed"><h3>ADD SOMETHING TO THE CARD</h3>
       ${SECTIONS.map(s=>{const m=SECTION_META[s];return `
-      <button class="place-btn" onclick="startAdd('${s}')">
+      <button class="place-btn" id="place-${s}" onclick="startAdd('${s}')"
+        onmouseenter="hiZone('${s}',true)" onmouseleave="hiZone('${s}',false)">
         <span class="pb-name">＋ ${m.name}</span>
         <span class="pb-hint">${m.hint} — e.g. ${m.eg}</span>
       </button>`;}).join('')}
@@ -372,9 +378,18 @@ function setCM(section,idx,value){
   if(value)f.changeMessage=value;else delete f.changeMessage;
   markDirty();
 }
-function colorEd(name,key){
-  return `<div class="colorrow"><input type="color" value="${rgb2hex(tpl.colors[key])}" oninput="tpl.colors['${key}']=hex2rgb(this.value);markDirty()"><span>${name} · ${esc(tpl.colors[key])}</span></div>`;
+function hiZone(s,on){
+  const z=document.getElementById('zone-'+s);if(z)z.classList.toggle('hi',on);
+  const b=document.getElementById('place-'+s);if(b)b.classList.toggle('hi',on);
 }
+function colorEd(name,key){
+  return `<div class="colorrow">
+    <input type="color" value="${rgb2hex(tpl.colors[key])}" oninput="tpl.colors['${key}']=hex2rgb(this.value);markDirty();syncHex('${key}',this.value)">
+    <input type="text" class="hexin" id="hex-${key}" value="${rgb2hex(tpl.colors[key])}" maxlength="7"
+      oninput="if(/^#[0-9a-fA-F]{6}$/.test(this.value)){tpl.colors['${key}']=hex2rgb(this.value);markDirty();this.previousElementSibling.value=this.value;}">
+    <span>${name}</span></div>`;
+}
+function syncHex(key,hex){const h=document.getElementById('hex-'+key);if(h)h.value=hex;}
 function rgb2hex(rgb){const m=String(rgb).match(/(\d+)\s*,\s*(\d+)\s*,\s*(\d+)/);if(!m)return'#a4133c';return'#'+[m[1],m[2],m[3]].map(n=>Number(n).toString(16).padStart(2,'0')).join('');}
 function hex2rgb(hex){const n=parseInt(hex.slice(1),16);return`rgb(${(n>>16)&255}, ${(n>>8)&255}, ${n&255})`;}
 
