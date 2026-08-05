@@ -11,6 +11,8 @@ compatibility_date = "2026-07-01"
 # ── Step 2 secrets ──
 #   APNS_KEY_PEM          – APNs auth key (.p8 file contents)
 #   ADMIN_KEY             – your password for PATCH /v1/passes
+# ── Step 3 secrets ──
+#   GOOGLE_SA_KEY_JSON    – service-account key file (secrets/google-wallet-key.json)
 #
 [vars]
 APPLE_TEAM_ID = "67K25P7L5H"                              # 10-char Apple team ID
@@ -18,6 +20,7 @@ APPLE_PASS_TYPE_ID = "pass.com.allaboutlove.kindness"     # must match the certi
 ORG_NAME = "All About Love"
 BASE_URL = "https://digital-pass.small-bread-a578.workers.dev"
 APNS_KEY_ID = "P5P6ZYU2DN"                            # 10-char APNs key ID
+GOOGLE_ISSUER_ID = "3388000000023184539"              # Google Wallet issuer (180Breadcrumbs)
 
 [[d1_databases]]
 binding = "DB"

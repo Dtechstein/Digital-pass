@@ -147,6 +147,20 @@
   </div>
 </div>
 
+<!-- google save-link modal -->
+<div class="overlay" id="googleOverlay">
+  <div class="modal">
+    <h2>Save to Google Wallet</h2>
+    <div class="sub" id="googleSerial"></div>
+    <div id="googleBody"><div class="note" style="text-align:center">Creating the Google pass…</div></div>
+    <div class="note">Demo mode: only accounts listed in your Google Wallet console (admins & test users) can save this card until publishing access is granted. Scan with an Android phone, or open the link in a browser signed into your Google account.</div>
+    <div class="foot">
+      <button class="btn" id="googleCopy" style="display:none" onclick="copyGoogleLink()">Copy link</button>
+      <button class="btn" onclick="hide('googleOverlay')">Done</button>
+    </div>
+  </div>
+</div>
+
 <!-- new card modal -->
 <div class="overlay" id="qrOverlay">
   <div class="modal">
@@ -187,6 +201,7 @@ async function api(path, opts = {}) {
 async function demoApi(path, opts) {
   await new Promise(r=>setTimeout(r,250));
   if (path === '/v1/passes' && !opts.method) return { passes: demoPasses };
+  if (path.includes('/google-link')) return { saveUrl: 'https://pay.google.com/gp/v/save/DEMO.JWT.LINK' };
   if (opts.method === 'POST' && path.includes('action=archive')) { demoPasses.find(p=>path.includes(p.serial)).archived_at = Date.now()/1000; return { ok:true }; }
   if (opts.method === 'POST' && path.includes('action=unarchive')) { demoPasses.find(p=>path.includes(p.serial)).archived_at = null; return { ok:true }; }
   if (opts.method === 'PATCH') return { ok:true, pushed:1, results:[{device:'demo',status:200}] };
@@ -238,6 +253,7 @@ function passRow(p) {
           ? `<button class="btn" onclick="unarchivePass('${p.serial}')">↩︎ Unarchive</button>`
           : `<button class="btn" ${p.registrations?'':'disabled'} onclick="showNotify('${p.serial}')">🔔 Notify</button>
              <button class="btn" onclick="showEdit('${p.serial}')">✎ Edit</button>
+             <button class="btn" onclick="showGoogleLink('${p.serial}')" title="Save to Google Wallet link">G</button>
              <button class="btn" onclick="archivePass('${p.serial}')">🗄 Archive</button>`}
         </div>
       </div>`;
@@ -301,6 +317,29 @@ async function saveFields() {
     hide('editOverlay'); toast('Saved & pushed ✓'); loadPasses();
   } catch(e){ toast('Failed: '+e.message); }
 }
+
+/* ── google save link ── */
+let googleLink = null;
+async function showGoogleLink(serial) {
+  currentSerial = serial;
+  document.getElementById('googleSerial').textContent = serial;
+  document.getElementById('googleBody').innerHTML = '<div class="note" style="text-align:center">Creating the Google pass…</div>';
+  document.getElementById('googleCopy').style.display = 'none';
+  show('googleOverlay');
+  try {
+    const data = await api('/v1/passes/'+serial+'/google-link');
+    if (!data.saveUrl) throw new Error(data.error || 'no link returned');
+    googleLink = data.saveUrl;
+    const qr = qrcode(0, 'M'); qr.addData(data.saveUrl); qr.make();
+    document.getElementById('googleBody').innerHTML =
+      '<div id="qrBoxG" style="display:grid;place-items:center;padding:6px 0">'+qr.createImgTag(3,8)+'</div>' +
+      '<div class="note" style="text-align:center"><a href="'+data.saveUrl+'" target="_blank" rel="noopener">Open save link ↗</a></div>';
+    document.getElementById('googleCopy').style.display = '';
+  } catch(e){
+    document.getElementById('googleBody').innerHTML = '<div class="note" style="color:var(--crimson)">Failed: '+esc(e.message)+'</div>';
+  }
+}
+function copyGoogleLink(){ if(googleLink){ navigator.clipboard.writeText(googleLink); toast('Link copied'); } }
 
 /* ── new card QR ── */
 function showQr() {

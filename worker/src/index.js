@@ -21,6 +21,7 @@
 import { buildPkpass } from './pkpass.js';
 import { buildPassJson, DEFAULT_FIELDS } from './testpass.js';
 import { pushPassUpdate } from './apns.js';
+import { upsertObject, objectExists, addMessage, saveUrl } from './google.js';
 import { PASS_IMAGES } from './assets.gen.js';
 import { ADMIN_HTML } from './admin.gen.js';
 
@@ -103,6 +104,23 @@ async function route(request, env) {
       if (!results.length) return new Response(null, { status: 204 });
       const lastUpdated = String(Math.max(...results.map((r) => r.updated_at)));
       return json({ lastUpdated, serialNumbers: results.map((r) => r.serial) });
+    }
+  }
+
+  // ── Admin: Google Wallet save link (must precede Apple 4-seg GET) ──
+  if (seg[0] === 'v1' && seg[1] === 'passes' && seg[3] === 'google-link' && m === 'GET') {
+    if (!adminOk(request, env)) return json({ error: 'unauthorized' }, 401);
+    if (!env.GOOGLE_SA_KEY_JSON) {
+      return json({ error: 'google_not_configured', hint: 'npx wrangler secret put GOOGLE_SA_KEY_JSON --config worker/wrangler.toml < secrets/google-wallet-key.json' }, 500);
+    }
+    const pass = await getPass(env, seg[2]);
+    if (!pass) return json({ error: 'not_found' }, 404);
+    try {
+      await upsertObject(env, pass.serial, JSON.parse(pass.fields_json));
+      const url2 = await saveUrl(env, pass.serial);
+      return json({ saveUrl: url2 });
+    } catch (err) {
+      return json({ error: 'google_failed', message: String(err && err.message) }, 500);
     }
   }
 
@@ -221,7 +239,26 @@ async function route(request, env) {
           ).bind(r.device_id, serial).run();
         }
       }
-      return json({ ok: true, serial, updated_at: now, pushed: results.length, results });
+
+      // Mirror to Google Wallet if this card has an object there
+      let google = 'not_configured';
+      if (env.GOOGLE_SA_KEY_JSON) {
+        try {
+          if (await objectExists(env, serial)) {
+            await upsertObject(env, serial, fields);
+            google = 'updated';
+            if (body.changeMessage) {
+              const msg = await addMessage(env, serial, body.changeMessage);
+              google = msg.ok ? 'updated+notified' : `updated (notify ${msg.status})`;
+            }
+          } else {
+            google = 'no_object';
+          }
+        } catch (err) {
+          google = 'error: ' + String(err && err.message).slice(0, 120);
+        }
+      }
+      return json({ ok: true, serial, updated_at: now, pushed: results.length, results, google });
     }
   }
 
