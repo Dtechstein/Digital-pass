@@ -192,6 +192,42 @@ async function route(request, env) {
     }
   }
 
+  // ── Admin: broadcast — one message to every card holder ──────
+  if (p === '/v1/broadcast' && m === 'POST') {
+    if (!adminOk(request, env)) return json({ error: 'unauthorized' }, 401);
+    const body = await request.json().catch(() => null);
+    const message = body && String(body.message || '').trim();
+    if (!message) return json({ error: 'bad_request', hint: 'message is required' }, 400);
+    const brandId = body.brandId && String(body.brandId).trim();
+
+    const q = brandId
+      ? env.DB.prepare('SELECT * FROM passes WHERE archived_at IS NULL AND brand_id=?').bind(brandId)
+      : env.DB.prepare('SELECT * FROM passes WHERE archived_at IS NULL');
+    const all = (await q.all()).results || [];
+    if (!all.length) return json({ ok: true, total: 0, sentNow: 0, queued: 0 });
+
+    const now = Math.floor(Date.now() / 1000);
+    const INLINE = 8; // stay well under Workers subrequest limits; the cron handles the rest
+    let sentNow = 0;
+
+    for (const pass of all.slice(0, INLINE)) {
+      const fields = { ...JSON.parse(pass.fields_json), latest: message };
+      await env.DB.prepare('UPDATE passes SET fields_json=?, updated_at=? WHERE serial=?')
+        .bind(JSON.stringify(fields), now, pass.serial).run();
+      const { pushed, google } = await notifyAllPlatforms(env, pass, fields, message);
+      await logEvent(env, pass.serial, 'broadcast', { message, apple: `pushed:${pushed}`, google });
+      sentNow++;
+    }
+    for (const pass of all.slice(INLINE)) {
+      await env.DB.prepare('INSERT INTO scheduled_messages (serial, send_at, message) VALUES (?,?,?)')
+        .bind(pass.serial, now, message).run();
+    }
+    return json({
+      ok: true, total: all.length, sentNow, queued: Math.max(0, all.length - INLINE),
+      note: all.length > INLINE ? 'Queued cards go out over the next few minutes via the scheduler.' : undefined,
+    });
+  }
+
   // ── Admin: the stories (consent-gated treasure) ──────────────
   if (p === '/v1/stories' && m === 'GET') {
     if (!adminOk(request, env)) return json({ error: 'unauthorized' }, 401);

@@ -92,6 +92,7 @@
     <button class="btn" id="builderBtn" style="display:none" onclick="location.href='/admin/builder'">🎨 Builder</button>
     <button class="btn" id="brandsBtn" style="display:none" onclick="showBrands()">🏷 Brands</button>
     <button class="btn" id="storiesBtn" style="display:none" onclick="showStories()">💬 Stories</button>
+    <button class="btn" id="broadcastBtn" style="display:none" onclick="showBroadcast()">📣 Notify all</button>
     <button class="btn" id="newCardBtn" style="display:none">＋ New test card</button>
     <button class="btn ghost" id="lockBtn" style="display:none">Sign out</button>
   </div>
@@ -152,6 +153,25 @@
     <div class="foot">
       <button class="btn" onclick="hide('editOverlay')">Cancel</button>
       <button class="btn primary" onclick="saveFields()">Save & push</button>
+    </div>
+  </div>
+</div>
+
+<!-- broadcast modal -->
+<div class="overlay" id="broadcastOverlay">
+  <div class="modal">
+    <h2>📣 Notify all card holders</h2>
+    <div class="sub">One message → every active card's lock screen</div>
+    <label>WHO GETS IT</label>
+    <select id="bc_brand" style="width:100%;padding:10px;border:1px solid var(--line);border-radius:10px;font-family:inherit;font-size:14px;margin-bottom:4px">
+      <option value="">Everyone — all active cards</option>
+    </select>
+    <label>MESSAGE (APPEARS ON EVERY LOCK SCREEN)</label>
+    <textarea id="bc_msg" placeholder="Three days left — one small act of kindness changes someone's whole day 💗"></textarea>
+    <div class="note">Archived cards are skipped. Larger groups are delivered in waves over a few minutes (Apple also mutes cards messaged more than ~2×/day — save broadcasts for moments that matter).</div>
+    <div class="foot">
+      <button class="btn" onclick="hide('broadcastOverlay')">Cancel</button>
+      <button class="btn primary" id="bcSend" onclick="sendBroadcast()">📣 Send to everyone</button>
     </div>
   </div>
 </div>
@@ -272,6 +292,32 @@ async function demoApi(path, opts) {
   return {};
 }
 
+/* ── broadcast ── */
+async function showBroadcast() {
+  document.getElementById('broadcastOverlay').classList.add('show');
+  try {
+    const data = await api('/v1/brands');
+    const sel = document.getElementById('bc_brand');
+    sel.innerHTML = '<option value="">Everyone — all active cards</option>' +
+      (data.brands || []).map(b => `<option value="${esc(b.id)}">Only ${esc(b.name)} cards</option>`).join('');
+  } catch {}
+}
+async function sendBroadcast() {
+  const msg = document.getElementById('bc_msg').value.trim();
+  if (!msg) { toast('Write the message first'); return; }
+  const btn = document.getElementById('bcSend');
+  btn.disabled = true; btn.textContent = 'Sending…';
+  try {
+    const r = await api('/v1/broadcast', { method: 'POST', body: JSON.stringify({ message: msg, brandId: document.getElementById('bc_brand').value || undefined }) });
+    hide('broadcastOverlay');
+    document.getElementById('bc_msg').value = '';
+    toast(r.total === 0 ? 'No active cards to notify' :
+      `📣 Sent to ${r.sentNow} card${r.sentNow===1?'':'s'} now` + (r.queued ? `, ${r.queued} more over the next few minutes` : ''));
+    loadPasses();
+  } catch (e) { toast('Broadcast failed: ' + e.message); }
+  btn.disabled = false; btn.textContent = '📣 Send to everyone';
+}
+
 /* ── stories ── */
 let allStories = [];
 async function showStories() {
@@ -314,6 +360,7 @@ function enter() {
   document.getElementById('newCardBtn').style.display = '';
   document.getElementById('brandsBtn').style.display = '';
   document.getElementById('storiesBtn').style.display = '';
+  document.getElementById('broadcastBtn').style.display = '';
   document.getElementById('builderBtn').style.display = '';
   document.getElementById('lockBtn').style.display = '';
   loadPasses();
@@ -345,6 +392,7 @@ function passRow(p) {
         <div class="actions">${archived
           ? `<button class="btn" onclick="unarchivePass('${p.serial}')">↩︎ Unarchive</button>`
           : `<button class="btn" ${p.registrations?'':'disabled'} onclick="showNotify('${p.serial}')">🔔 Notify</button>
+             <button class="btn" onclick="window.open('/p/'+'${p.serial}','_blank')" title="Open this card's page">🌐 Page</button>
              <button class="btn" onclick="showEdit('${p.serial}')">✎ Edit</button>
              <button class="btn" onclick="showAppleLink('${p.serial}')" title="Add to Apple Wallet link">${APPLE_SVG}</button>
              <button class="btn" onclick="showGoogleLink('${p.serial}')" title="Save to Google Wallet link">G</button>
