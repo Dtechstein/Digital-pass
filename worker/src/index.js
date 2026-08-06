@@ -39,6 +39,7 @@ import { appleThumbnails } from './images.js';
 import { PASS_IMAGES } from './assets.gen.js';
 import { ADMIN_HTML, BUILDER_HTML } from './admin.gen.js';
 import { companionChat } from './companion.js';
+import { renderCardPage, handleComplete } from './page.js';
 
 export default {
   async fetch(request, env) {
@@ -190,6 +191,22 @@ async function route(request, env) {
     }
   }
 
+  // ── Admin: the stories (consent-gated treasure) ──────────────
+  if (p === '/v1/stories' && m === 'GET') {
+    if (!adminOk(request, env)) return json({ error: 'unauthorized' }, 401);
+    const rows = await env.DB.prepare(
+      `SELECT s.serial, s.story, s.consent, s.consented_at, s.act_number, s.created_at, p.fields_json
+       FROM act_stories s LEFT JOIN passes p ON p.serial = s.serial
+       ORDER BY s.created_at DESC LIMIT 200`
+    ).all();
+    const stories = (rows.results || []).map((r) => {
+      let who = '';
+      try { const f = JSON.parse(r.fields_json || '{}'); who = f.guest || f.clientName || f.name || ''; } catch {}
+      return { serial: r.serial, who, story: r.story, consent: !!r.consent, actNumber: r.act_number, createdAt: r.created_at };
+    });
+    return json({ stories });
+  }
+
   // ── Admin: the builder's AI brain (Claude) ───────────────────
   if (p === '/v1/companion' && m === 'POST') {
     if (!adminOk(request, env)) return json({ error: 'unauthorized' }, 401);
@@ -205,6 +222,32 @@ async function route(request, env) {
     } catch (err) {
       console.log('companion_error', String(err && err.message));
       return json({ error: 'companion_failed', message: String(err && err.message) }, 502);
+    }
+  }
+
+  // ── Public: THE HOSTED CARD PAGE (the card is the doorway) ───
+  if (seg[0] === 'p' && seg.length >= 2) {
+    const pass = await getPass(env, seg[1]);
+    if (!pass || pass.archived_at) return new Response('This page has moved on. 💗', { status: 404, headers: { 'Content-Type': 'text/plain; charset=utf-8' } });
+
+    if (seg.length === 2 && m === 'GET') {
+      const tpl = await resolveTemplate(env, pass);
+      return new Response(await renderCardPage(env, pass, tpl), { headers: { 'Content-Type': 'text/html; charset=utf-8' } });
+    }
+    if (seg[2] === 'complete' && m === 'POST') {
+      const body = await request.json().catch(() => ({}));
+      const r = await handleComplete(env, pass, body || {});
+      return json(r.data, r.status);
+    }
+    if (seg[2] === 'google' && m === 'GET') {
+      if (!env.GOOGLE_SA_KEY_JSON) return new Response('Google Wallet not configured', { status: 404 });
+      try {
+        const tpl = await resolveTemplate(env, pass);
+        await upsertObject(env, pass.serial, JSON.parse(pass.fields_json), tpl, pass.brand_id);
+        return Response.redirect(await saveUrl(env, pass.serial), 302);
+      } catch (err) {
+        return new Response('Google Wallet hiccup — try again in a minute', { status: 502 });
+      }
     }
   }
 

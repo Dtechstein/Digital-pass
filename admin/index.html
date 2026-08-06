@@ -91,6 +91,7 @@
   <div class="right">
     <button class="btn" id="builderBtn" style="display:none" onclick="location.href='/admin/builder'">🎨 Builder</button>
     <button class="btn" id="brandsBtn" style="display:none" onclick="showBrands()">🏷 Brands</button>
+    <button class="btn" id="storiesBtn" style="display:none" onclick="showStories()">💬 Stories</button>
     <button class="btn" id="newCardBtn" style="display:none">＋ New test card</button>
     <button class="btn ghost" id="lockBtn" style="display:none">Sign out</button>
   </div>
@@ -152,6 +153,17 @@
       <button class="btn" onclick="hide('editOverlay')">Cancel</button>
       <button class="btn primary" onclick="saveFields()">Save & push</button>
     </div>
+  </div>
+</div>
+
+<!-- stories modal -->
+<div class="overlay" id="storiesOverlay">
+  <div class="modal">
+    <h2>💬 Stories</h2>
+    <div class="sub">What people did — <b>only consented stories may ever be shared</b></div>
+    <div style="margin:10px 0 12px"><label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer"><input type="checkbox" id="consentOnly" onchange="renderStories()"> Show shareable (consented) only</label></div>
+    <div id="storiesList" style="max-height:420px;overflow-y:auto"></div>
+    <div class="foot"><button class="btn" onclick="hide('storiesOverlay')">Close</button></div>
   </div>
 </div>
 
@@ -260,6 +272,32 @@ async function demoApi(path, opts) {
   return {};
 }
 
+/* ── stories ── */
+let allStories = [];
+async function showStories() {
+  document.getElementById('storiesOverlay').classList.add('show');
+  document.getElementById('storiesList').innerHTML = '<div class="empty">Loading…</div>';
+  try { const data = await api('/v1/stories'); allStories = data.stories || []; renderStories(); }
+  catch { document.getElementById('storiesList').innerHTML = '<div class="empty">Could not load stories.</div>'; }
+}
+function renderStories() {
+  const consentOnly = document.getElementById('consentOnly').checked;
+  const list = consentOnly ? allStories.filter(s => s.consent) : allStories;
+  if (!list.length) {
+    document.getElementById('storiesList').innerHTML = '<div class="empty">' + (consentOnly ? 'No shareable stories yet.' : 'No completions yet — the first act is coming 💗') + '</div>';
+    return;
+  }
+  document.getElementById('storiesList').innerHTML = list.map(s => `
+    <div style="border:1px solid var(--line);border-radius:12px;padding:12px 14px;margin-bottom:10px">
+      <div style="display:flex;justify-content:space-between;align-items:baseline;gap:8px">
+        <b>${esc(s.who) || 'Someone'}</b>
+        <span style="font-size:11px;font-weight:800;letter-spacing:.5px;color:${s.consent ? 'var(--crimson)' : '#8a6b74'}">${s.consent ? '✓ MAY SHARE' : '🔒 PRIVATE'}</span>
+      </div>
+      <div style="font-size:12px;color:#8a6b74;margin:2px 0 6px">Act #${Number(s.actNumber).toLocaleString()} · ${rel(s.createdAt)}</div>
+      <div style="font-size:13.5px;line-height:1.5">${s.story ? esc(s.story) : '<i style="color:#8a6b74">Completed without a story</i>'}</div>
+    </div>`).join('');
+}
+
 /* ── auth flow ── */
 async function connect() {
   KEY = document.getElementById('keyInput').value.trim();
@@ -275,6 +313,7 @@ function enter() {
   document.getElementById('main').style.display = 'block';
   document.getElementById('newCardBtn').style.display = '';
   document.getElementById('brandsBtn').style.display = '';
+  document.getElementById('storiesBtn').style.display = '';
   document.getElementById('builderBtn').style.display = '';
   document.getElementById('lockBtn').style.display = '';
   loadPasses();
