@@ -39,7 +39,8 @@ import { appleThumbnails } from './images.js';
 import { PASS_IMAGES } from './assets.gen.js';
 import { ADMIN_HTML, BUILDER_HTML } from './admin.gen.js';
 import { companionChat } from './companion.js';
-import { renderCardPage, handleComplete } from './page.js';
+import { renderCardPage, handleComplete, getStory } from './page.js';
+import { renderMintSvg } from './mint.js';
 
 export default {
   async fetch(request, env) {
@@ -238,6 +239,17 @@ async function route(request, env) {
       const body = await request.json().catch(() => ({}));
       const r = await handleComplete(env, pass, body || {});
       return json(r.data, r.status);
+    }
+    if (seg[2] === 'mint.svg' && m === 'GET') {
+      const story = await getStory(env, pass.serial);
+      if (!story) return new Response('Not minted yet — complete your act first 💗', { status: 404, headers: { 'Content-Type': 'text/plain; charset=utf-8' } });
+      const tpl = await resolveTemplate(env, pass);
+      const f = JSON.parse(pass.fields_json || '{}');
+      const svg = renderMintSvg({
+        actNumber: story.act_number, name: f.guest || f.clientName || f.name || '',
+        serial: pass.serial, completedAt: story.created_at, template: tpl,
+      });
+      return new Response(svg, { headers: { 'Content-Type': 'image/svg+xml; charset=utf-8', 'Cache-Control': 'public, max-age=86400' } });
     }
     if (seg[2] === 'google' && m === 'GET') {
       if (!env.GOOGLE_SA_KEY_JSON) return new Response('Google Wallet not configured', { status: 404 });

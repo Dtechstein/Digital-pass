@@ -103,6 +103,13 @@ export async function renderCardPage(env, pass, template) {
   .btn.small{flex:1;padding:12px;font-size:14px;border-radius:11px;}
   .btn.ghost{background:#fff;border:1.5px solid var(--line);color:var(--soft);}
   .btn.go{background:var(--crimson);color:#fff;}
+  .mint{display:none;margin:16px 20px;background:linear-gradient(160deg,var(--deep),var(--bright));border-radius:18px;padding:16px;text-align:center;}
+  .mint.open{display:block;animation:pop .6s ease;}
+  .mintlbl{font-size:10.5px;font-weight:800;letter-spacing:1.4px;color:#fff;opacity:.85;margin-bottom:12px;}
+  .mint img{width:100%;border-radius:12px;display:block;box-shadow:0 14px 34px -12px rgba(0,0,0,.55);}
+  .mintrow{display:flex;gap:10px;margin-top:12px;}
+  .mint .btn.go{background:#fff;color:var(--crimson);}
+  .mint .btn.ghost{background:transparent;border:1.5px solid rgba(255,255,255,.4);color:#fff;}
   .movement{margin:16px 20px;background:var(--blush);border:1px solid var(--line);border-radius:16px;padding:16px 18px;}
   .movement .top{display:flex;justify-content:space-between;align-items:baseline;}
   .movement .lbl{font-size:10.5px;font-weight:800;letter-spacing:1.2px;color:var(--crimson);}
@@ -161,6 +168,15 @@ export async function renderCardPage(env, pass, template) {
     </div>
   </div>
 
+  <div class="mint${done ? ' open' : ''}" id="mintBox">
+    <div class="mintlbl">✨ YOUR MINT — ONE OF ONE, NEVER AGAIN</div>
+    <img id="mintImg" ${done ? `src="/p/${esc(pass.serial)}/mint.svg"` : ''} alt="Certificate of kindness">
+    <div class="mintrow">
+      <button class="btn small go" onclick="shareMint()">📤 Share my certificate</button>
+      <button class="btn small ghost" onclick="downloadMint()">⬇ Save</button>
+    </div>
+  </div>
+
   ${isLove && movementText ? `
   <div class="movement" id="movementBox">
     <div class="top"><span class="lbl">THE MOVEMENT</span><span class="count" id="pctText">${pct ? pct + '% of the way' : ''}</span></div>
@@ -205,6 +221,38 @@ async function downloadPhoto(){
     document.body.appendChild(a);a.click();a.remove();toast('Saving your photo ⬇');
   }catch{toast("Couldn't download — try press-and-hold on the photo");}
 }
+async function shareMint(){
+  const url=location.origin+location.pathname+'/mint.svg';
+  if(navigator.share){
+    try{
+      const res=await fetch(url);const svg=await res.text();
+      // rasterize so every app accepts it
+      const img=new Image();
+      await new Promise((ok,no)=>{img.onload=ok;img.onerror=no;img.src='data:image/svg+xml;base64,'+btoa(unescape(encodeURIComponent(svg)));});
+      const cv=document.createElement('canvas');cv.width=800;cv.height=1000;
+      cv.getContext('2d').drawImage(img,0,0,800,1000);
+      const blob=await new Promise(ok=>cv.toBlob(ok,'image/png'));
+      const file=new File([blob],'my-act-of-kindness.png',{type:'image/png'});
+      if(navigator.canShare&&navigator.canShare({files:[file]})){
+        await navigator.share({files:[file],title:'My act of kindness',text:'Minted once, never again 💗 '+location.href});return;
+      }
+      await navigator.share({title:'My act of kindness',text:'Minted once, never again 💗',url:location.href});
+    }catch{}
+  }else{toast('Open this on your phone to share 📤');}
+}
+async function downloadMint(){
+  try{
+    const url=location.pathname+'/mint.svg';
+    const res=await fetch(url);const svg=await res.text();
+    const img=new Image();
+    await new Promise((ok,no)=>{img.onload=ok;img.onerror=no;img.src='data:image/svg+xml;base64,'+btoa(unescape(encodeURIComponent(svg)));});
+    const cv=document.createElement('canvas');cv.width=800;cv.height=1000;
+    cv.getContext('2d').drawImage(img,0,0,800,1000);
+    const blob=await new Promise(ok=>cv.toBlob(ok,'image/png'));
+    const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='my-act-of-kindness.png';
+    document.body.appendChild(a);a.click();a.remove();toast('Saving your certificate ⬇');
+  }catch{toast("Couldn't save — press and hold the image instead");}
+}
 function startComplete(){
   if(DONE){toast('Already counted — thank you 💗');return;}
   document.getElementById('storyBox').classList.add('open');
@@ -227,6 +275,10 @@ async function submitComplete(skip){
     const a=document.getElementById('actNum');if(a)a.textContent='Act #'+Number(data.actNumber).toLocaleString()+' of one million';
     const b=document.getElementById('barFill');if(b)b.style.width=Math.min(100,data.actNumber/1e6*100).toFixed(1)+'%';
     const c=document.getElementById('pctText');if(c)c.textContent=Math.min(100,data.actNumber/1e6*100).toFixed(1)+'% of the way';
+    const mb=document.getElementById('mintBox');
+    document.getElementById('mintImg').src=location.pathname+'/mint.svg';
+    mb.classList.add('open');
+    setTimeout(()=>mb.scrollIntoView({behavior:'smooth',block:'center'}),400);
     toast('Your card just updated — check your lock screen 💗');
   }catch(e){
     toast(e.message==='already_completed'?'Already counted — thank you 💗':'Hmm, that didn\\'t go through — try again?');

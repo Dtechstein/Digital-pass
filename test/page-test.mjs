@@ -44,3 +44,16 @@ if (r3.data.consent !== false) throw new Error('consent without story should not
 console.log('• consent means nothing without a story ✓');
 
 console.log('\nPASS — the doorway opens: page, celebration, privacy all hold.');
+
+/* 5 ── the mint: deterministic, unique, present on completed page */
+const { renderMintSvg } = await import('../worker/src/mint.js');
+const mintArgs = { actNumber: 251443, name: 'Sarah', serial: 's1', completedAt: 1754438400, template: DEFAULT_TEMPLATE };
+if (renderMintSvg(mintArgs) !== renderMintSvg(mintArgs)) throw new Error('mint not deterministic');
+const seenSigs = new Set();
+for (let n = 1; n <= 500; n++) {
+  const svg = renderMintSvg({ actNumber: 251442 + n, name: 'T', serial: 's-' + n, completedAt: 1754438400, template: DEFAULT_TEMPLATE });
+  const sig = (svg.match(/<path[^>]*d="[^"]{40}/g) || []).slice(0, 6).join('|');
+  if (seenSigs.has(sig)) throw new Error('mint collision at ' + n);
+  seenSigs.add(sig);
+}
+console.log('• mint: deterministic + 500 acts, zero identical designs ✓');
