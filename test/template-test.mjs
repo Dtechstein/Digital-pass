@@ -19,8 +19,8 @@ expect(g.primaryFields[0].value === 'I promised an act of kindness', 'primary/pr
 expect(g.secondaryFields.map(f=>f.key).join(',') === 'guest,event', 'secondary');
 expect(g.auxiliaryFields.map(f=>f.key).join(',') === 'acts,movement', 'auxiliary');
 expect(g.backFields[0].key === 'latest' && g.backFields[0].changeMessage === '%@', 'back/latest');
-expect(g.backFields[1].value.includes('allaboutlove'), 'back/album uses barcode');
-expect(p.barcodes[0].message.includes('allaboutlove'), 'barcode');
+expect(g.backFields[1].value === 'https://x.test/p/s1', 'back/album defaults to the card\'s own page');
+expect(p.barcodes[0].message === 'https://x.test/p/s1', 'barcode defaults to the card\'s own page');
 console.log('• Kindness default: renders identically ✓');
 
 /* 2 ── totally different brand */

@@ -9,7 +9,7 @@
  */
 
 import { googleHeroUrl } from './images.js';
-import { DEFAULT_TEMPLATE, googleView } from './template.js';
+import { DEFAULT_TEMPLATE, googleView, withPageLink } from './template.js';
 
 const WALLET_API = 'https://walletobjects.googleapis.com/walletobjects/v1';
 const SCOPE = 'https://www.googleapis.com/auth/wallet_object.issuer';
@@ -112,6 +112,7 @@ function objectId(env, serial) {
 
 function objectPayload(env, serial, f, template, brandId) {
   const t = template || DEFAULT_TEMPLATE;
+  f = withPageLink(env, serial, f);
   const v = googleView(t, f);
   const hero = f.photoUrl ? { heroImage: { sourceUri: { uri: googleHeroUrl(f.photoUrl) } } } : {};
   const payload = {

@@ -75,7 +75,14 @@ function barcodeValue(template, f) {
   const src = (template.barcode && template.barcode.source) || 'barcode';
   if (src === 'fixed') return template.barcode.fixed || '';
   if (src === 'photoUrl') return f.photoUrl || f.barcode || '';
-  return f.barcode || f.photoUrl || 'https://allaboutlove.camera/p/test';
+  return f.barcode || f.photoUrl || '';
+}
+
+/** Every card's links default to ITS OWN hosted page (/p/{serial}) unless the brand set one. */
+export function withPageLink(env, serial, fields) {
+  const f = { ...(fields || {}) };
+  if (!f.barcode && env && env.BASE_URL && serial) f.barcode = `${env.BASE_URL}/p/${serial}`;
+  return f;
 }
 
 function fieldValue(entry, template, f) {
@@ -103,7 +110,7 @@ function renderSection(entries, template, f) {
 /** Apple pass.json from a template. */
 export function buildPassJson(env, { serial, authToken, fields, template }) {
   const t = template || DEFAULT_TEMPLATE;
-  const f = fields || {};
+  const f = withPageLink(env, serial, fields);
   const bc = barcodeValue(t, f);
   const pass = {
     formatVersion: 1,
