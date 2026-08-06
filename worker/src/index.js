@@ -513,9 +513,17 @@ async function servePkpass(env, passData, updatedAt, template) {
   const images = Object.fromEntries(
     Object.entries(PASS_IMAGES).filter(([name]) => !name.startsWith('strip'))
   );
-  if (passData.fields && passData.fields.photoUrl) {
-    Object.assign(images, await appleThumbnails(passData.fields.photoUrl));
+  // THE CARD BECOMES THE MINT: once the act is completed, the card's image
+  // spot shows the minted one-of-one; before that (or if conversion fails), the photo.
+  let thumbs = {};
+  if (env.DB && passData.serial) {
+    const story = await getStory(env, passData.serial).catch(() => null);
+    if (story) thumbs = await appleThumbnails(`${env.BASE_URL}/p/${passData.serial}/mint.svg`);
   }
+  if (!Object.keys(thumbs).length && passData.fields && passData.fields.photoUrl) {
+    thumbs = await appleThumbnails(passData.fields.photoUrl);
+  }
+  Object.assign(images, thumbs);
   const pkpass = buildPkpass(buildPassJson(env, passData), images, {
     certPem: env.APPLE_PASS_CERT_PEM,
     keyPem: env.APPLE_PASS_KEY_PEM,

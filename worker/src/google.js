@@ -114,7 +114,8 @@ function objectPayload(env, serial, f, template, brandId) {
   const t = template || DEFAULT_TEMPLATE;
   f = withPageLink(env, serial, f);
   const v = googleView(t, f);
-  const hero = f.photoUrl ? { heroImage: { sourceUri: { uri: googleHeroUrl(f.photoUrl) } } } : {};
+  const heroSrc = f.mintHero || f.photoUrl;
+  const hero = heroSrc ? { heroImage: { sourceUri: { uri: googleHeroUrl(heroSrc) } } } : {};
   const payload = {
     ...hero,
     id: objectId(env, serial),
@@ -138,6 +139,11 @@ function objectPayload(env, serial, f, template, brandId) {
 /** Create or update the object for a card. */
 export async function upsertObject(env, serial, fields, template, brandId) {
   await ensureClass(env, brandId);
+  // completed act → the hero banner becomes the minted certificate
+  try {
+    const story = env.DB && await env.DB.prepare('SELECT id FROM act_stories WHERE serial=?').bind(serial).first();
+    if (story) fields = { ...fields, mintHero: `${env.BASE_URL}/p/${serial}/mint.svg` };
+  } catch {}
   const payload = objectPayload(env, serial, fields, template, brandId);
   const existing = await api(env, 'GET', `/genericObject/${objectId(env, serial)}`);
   if (existing.status === 200) {
